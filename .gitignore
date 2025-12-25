@@ -204,6 +204,13 @@ cython_debug/
 .idea/httpRequests
 http-client.private.env.json
 
+# PyCharm project structure
+.idea/misc.xml
+.idea/modules.xml
+.idea/*.iml
+.idea/vcs.xml
+.idea/inspectionProfiles/profiles_settings.xml
+
 # Github Copilot persisted session migrations, see: https://github.com/microsoft/copilot-intellij-feedback/issues/712#issuecomment-3322062215
 .idea/**/copilot.data.migration.*.xml
 
