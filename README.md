@@ -27,7 +27,7 @@ uv run bu
 To make this convenient from anywhere, add an alias to your `.bashrc` or `.zshrc`:
 
 ```bash
-alias bu='uv --project /home/mikebd/src/mikebd/py/scripts run bu'
+alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
 ```
 
 ## Available Scripts
