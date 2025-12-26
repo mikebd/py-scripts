@@ -38,12 +38,16 @@ def main():
 
     print(f"Newly added formulas: {', '.join(newly_added_formulas)}")
 
-    # 6. Run brew info on newly added formulas
-    # Using xargs-like behavior: passing all formulas to one brew info call
-    try:
-        subprocess.run(["brew", "info"] + newly_added_formulas, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running brew info: {e}", file=sys.stderr)
+    # 6. Run brew info on newly added formulas (simulating xargs)
+    # chunk_size 100 is a safe bet for most OS argument limits
+    chunk_size = 100
+    for i in range(0, len(newly_added_formulas), chunk_size):
+        chunk = newly_added_formulas[i : i + chunk_size]
+        try:
+            print(f"\n--- Fetching info for chunk {i // chunk_size + 1} ---")
+            subprocess.run(["brew", "info"] + chunk, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
 
 def run_command(command):
     """Runs a shell command and returns its output as a list of lines."""
@@ -56,7 +60,6 @@ def run_command(command):
 
 def formulas() -> set[str]:
     return set(run_command(["brew", "search", "--formula", "/"]))
-
 
 if __name__ == "__main__":
     main()
