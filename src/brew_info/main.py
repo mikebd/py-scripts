@@ -18,19 +18,27 @@ def main():
     
     # 2. Update brew
     print("Updating Homebrew...")
+    update_output = ""
     try:
-        subprocess.run(["brew", "update"], check=True)
+        result = subprocess.run(["brew", "update"], capture_output=True, text=True, check=True)
+        update_output = result.stdout
+        print(update_output, end="")
     except subprocess.CalledProcessError as e:
         print(f"Brew update failed: {e}", file=sys.stderr)
-        # We can still proceed if we want to see if anything changed, 
-        # but usually brew update failure means no new formulas.
-        pass
+        print(e.stdout, end="")
+        print(e.stderr, file=sys.stderr)
+        sys.exit(e.returncode)
 
-    # 3. Get new formulas
+    # 3. Check if anything was updated
+    if "Already up-to-date." in update_output:
+        print("No new formulas added.")
+        return
+
+    # 4. Get new formulas
     print("Fetching new formulas...")
     new_formulas = set(run_command(["brew", "search", "--formula", "/"]))
 
-    # 4. Find newly added formulas
+    # 5. Find newly added formulas
     newly_added_formulas = sorted(list(new_formulas - old_formulas))
 
     if not newly_added_formulas:
@@ -39,7 +47,7 @@ def main():
 
     print(f"Newly added formulas: {', '.join(newly_added_formulas)}")
 
-    # 5. Run brew info on newly added formulas
+    # 6. Run brew info on newly added formulas
     # Using xargs-like behavior: passing all formulas to one brew info call
     try:
         subprocess.run(["brew", "info"] + newly_added_formulas, check=True)
