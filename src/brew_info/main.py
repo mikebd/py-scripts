@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import subprocess
 import sys
+from subprocess import CompletedProcess
 
 
 def main():
@@ -12,7 +13,7 @@ def main():
     print("Updating Homebrew...")
     update_output = ""
     try:
-        result = subprocess.run(["brew", "update"], capture_output=True, text=True, check=True)
+        result = run_command_capture_text(["brew", "update"])
         update_output = result.stdout
         print(update_output, end="")
     except subprocess.CalledProcessError as e:
@@ -51,10 +52,15 @@ def main():
             print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
 
 
-def run_command(command: list[str]) -> list[str]:
+def run_command_capture_text(command: list[str]) -> CompletedProcess[str]:
+    """Runs a shell command and returns its output as a string."""
+    return subprocess.run(command, capture_output=True, text=True, check=True)
+
+
+def run_command_capture_lines(command: list[str]) -> list[str]:
     """Runs a shell command and returns its output as a list of lines."""
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        result = run_command_capture_text(command)
         return result.stdout.strip().splitlines()
     except subprocess.CalledProcessError as e:
         print(f"Error running command {' '.join(command)}: {e.stderr}", file=sys.stderr)
@@ -62,7 +68,7 @@ def run_command(command: list[str]) -> list[str]:
 
 
 def formulas() -> set[str]:
-    return set(run_command(["brew", "search", "--formula", "/"]))
+    return set(run_command_capture_lines(["brew", "search", "--formula", "/"]))
 
 
 if __name__ == "__main__":
