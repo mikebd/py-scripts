@@ -9,6 +9,7 @@ description = "A collection of Python scripts"
 authors = [
     { name = "Michael Ben-David" },
 ]
+license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.13"
 classifiers = [
@@ -20,5 +21,60 @@ classifiers = [
 [project.scripts]
 bu = "brew_info.main:main"
 
+[dependency-groups]
+dev = [
+    "pyright>=1.1.407",
+    "ruff>=0.14.10",
+]
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+
+# Keep noise low at first
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+# Good hygiene, low friction
+reportUnusedImport = true
+reportUnusedVariable = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle errors
+    "F", # pyflakes
+    "I", # import sorting
+    "B", # flake8-bugbear
+    "UP", # pyupgrade
+    "TID", # tidy imports (type-aware, low noise)
+]
+
+ignore = [
+    "ANN", # let Pyright handle typing
+    "TCH", # typing-only imports
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "B008", # function calls in defaults
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv]
+managed = true

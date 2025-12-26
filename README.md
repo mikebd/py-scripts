@@ -2,12 +2,19 @@
 
 A personal collection of small Python command-line tools.
 
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Running scripts](#running-scripts)
+- [Available Scripts](#available-scripts)
+- [Development](#development)
+
 ## Requirements
 
 - Python 3.13+
 - [`uv`](https://github.com/astral-sh/uv)
 
-## Running scripts (recommended)
+## Running scripts
 
 Scripts are run directly from the repository using `uv`, without installing anything globally.
 
@@ -29,16 +36,18 @@ alias bu='uv --project /home/mikebd/src/mikebd/py/scripts run bu'
 
 Identifies newly added Homebrew formulas after an update and displays their information.
 
-```bash
-bu
-```
+## Development
 
-## Optional: install as a CLI (advanced)
+A `Makefile` is provided for common development tasks. These commands use `uv` to run `ruff` and `pyright` within the
+project environment.
 
-If you want `bu` installed into your environment as a normal CLI tool:
-
-```bash
-pip install -e .
-```
-
-This is mainly useful for development or if you prefer traditional Python packaging workflows.
+| Command          | Description                                   |
+|:-----------------|:----------------------------------------------|
+| `make`           | Show the help menu (default)                  |
+| `make lint`      | Run `ruff` linting checks                     |
+| `make typecheck` | Run `pyright` static type analysis            |
+| `make check`     | Run both linting and type checking            |
+| `make fix`       | Automatically fix linting issues              |
+| `make format`    | Format code with `ruff`                       |
+| `make fmt`       | Fix, format, and run all checks (convenience) |
+| `make all`       | Run all non-mutating checks                   |

@@ -2,11 +2,12 @@
 import subprocess
 import sys
 
+
 def main():
     # 1. Get old formulas
     print("Fetching old formulas...")
     old_formulas = formulas()
-    
+
     # 2. Update brew
     print("Updating Homebrew...")
     update_output = ""
@@ -49,7 +50,8 @@ def main():
         except subprocess.CalledProcessError as e:
             print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
 
-def run_command(command):
+
+def run_command(command: list[str]) -> list[str]:
     """Runs a shell command and returns its output as a list of lines."""
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True)
@@ -58,8 +60,10 @@ def run_command(command):
         print(f"Error running command {' '.join(command)}: {e.stderr}", file=sys.stderr)
         return []
 
+
 def formulas() -> set[str]:
     return set(run_command(["brew", "search", "--formula", "/"]))
+
 
 if __name__ == "__main__":
     main()
