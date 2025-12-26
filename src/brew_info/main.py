@@ -2,19 +2,10 @@
 import subprocess
 import sys
 
-def run_command(command):
-    """Runs a shell command and returns its output as a list of lines."""
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        return result.stdout.strip().splitlines()
-    except subprocess.CalledProcessError as e:
-        print(f"Error running command {' '.join(command)}: {e.stderr}", file=sys.stderr)
-        return []
-
 def main():
     # 1. Get old formulas
     print("Fetching old formulas...")
-    old_formulas = set(run_command(["brew", "search", "--formula", "/"]))
+    old_formulas = formulas()
     
     # 2. Update brew
     print("Updating Homebrew...")
@@ -36,7 +27,7 @@ def main():
 
     # 4. Get new formulas
     print("Fetching new formulas...")
-    new_formulas = set(run_command(["brew", "search", "--formula", "/"]))
+    new_formulas = formulas()
 
     # 5. Find newly added formulas
     newly_added_formulas = sorted(list(new_formulas - old_formulas))
@@ -53,6 +44,19 @@ def main():
         subprocess.run(["brew", "info"] + newly_added_formulas, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error running brew info: {e}", file=sys.stderr)
+
+def run_command(command):
+    """Runs a shell command and returns its output as a list of lines."""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        return result.stdout.strip().splitlines()
+    except subprocess.CalledProcessError as e:
+        print(f"Error running command {' '.join(command)}: {e.stderr}", file=sys.stderr)
+        return []
+
+def formulas() -> set[str]:
+    return set(run_command(["brew", "search", "--formula", "/"]))
+
 
 if __name__ == "__main__":
     main()
