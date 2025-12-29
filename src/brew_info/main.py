@@ -25,7 +25,6 @@ def main():
 
     # 3. Check if anything was updated
     if "Already up-to-date." in update_output:
-        print("No new formulas added.")
         return
 
     # 4. Get new formulas
@@ -51,6 +50,10 @@ def main():
             subprocess.run(["brew", "info"] + chunk, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
+
+    # 7. Outdated formulas
+    print("\n")
+    subprocess.run(["brew", "upgrade", "--formula", "--dry-run"])
 
 
 def formulas() -> set[str]:
