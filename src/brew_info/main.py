@@ -31,27 +31,24 @@ def main():
     print("Fetching new formulas...")
     new_formulas = formulas()
 
-    # 5. Find newly added formulas
+    # 5. Show info for newly added formulas
     newly_added_formulas = sorted(list(new_formulas - old_formulas))
+    if newly_added_formulas:
+        print(f"Newly added formulas: {', '.join(newly_added_formulas)}")
 
-    if not newly_added_formulas:
+        # chunk_size 100 is a safe bet for most OS argument limits
+        chunk_size = 100
+        for i in range(0, len(newly_added_formulas), chunk_size):
+            chunk = newly_added_formulas[i : i + chunk_size]
+            try:
+                print(f"\n--- Fetching info for chunk {i // chunk_size + 1} ---")
+                subprocess.run(["brew", "info"] + chunk, check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
+    else:
         print("No new formulas added.")
-        return
 
-    print(f"Newly added formulas: {', '.join(newly_added_formulas)}")
-
-    # 6. Run brew info on newly added formulas (simulating xargs)
-    # chunk_size 100 is a safe bet for most OS argument limits
-    chunk_size = 100
-    for i in range(0, len(newly_added_formulas), chunk_size):
-        chunk = newly_added_formulas[i : i + chunk_size]
-        try:
-            print(f"\n--- Fetching info for chunk {i // chunk_size + 1} ---")
-            subprocess.run(["brew", "info"] + chunk, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
-
-    # 7. Outdated formulas
+    # 6. Outdated formulas
     print("\n")
     subprocess.run(["brew", "upgrade", "--formula", "--dry-run"])
 
