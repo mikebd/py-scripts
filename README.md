@@ -38,6 +38,14 @@ Identifies newly added Homebrew formulas after an update and displays their info
 
 ## Development
 
+### Setup
+
+```bash
+uv run pre-commit install
+```
+
+### Makefile
+
 A `Makefile` is provided for common development tasks. These commands use `uv` to run `ruff`, `pyright` and `pytest`
 within the project environment.
 

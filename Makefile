@@ -1,3 +1,13 @@
+UV := $(or \
+  $(shell command -v uv), \
+  $(shell command -v ~/.cargo/bin/uv), \
+  $(shell command -v /home/linuxbrew/.linuxbrew/bin/uv) \
+)
+
+ifndef UV
+$(error "uv not found in PATH. Please install uv: https://astral.sh/uv/")
+endif
+
 .PHONY: help lint format typecheck fix check all fmt
 
 # Default target: show help
@@ -18,20 +28,20 @@ all: check test
 check: lint typecheck
 
 test:
-	uv run pytest
+	$(UV) run pytest
 
 lint:
-	uv run ruff check .
+	$(UV) run ruff check .
 
 typecheck:
-	uv run pyright
+	$(UV) run pyright
 
 # Mutating actions
 fix:
-	uv run ruff check . --fix
+	$(UV) run ruff check . --fix
 
 format:
-	uv run ruff format .
+	$(UV) run ruff format .
 
 # Convenience: fix + format + recheck
 fmt: fix format check
