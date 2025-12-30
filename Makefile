@@ -30,6 +30,9 @@ check: lint typecheck
 test:
 	$(UV) run pytest
 
+test-parallel:
+	$(UV) run pytest -n auto
+
 lint:
 	$(UV) run ruff check .
 

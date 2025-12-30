@@ -49,14 +49,15 @@ uv run pre-commit install
 A `Makefile` is provided for common development tasks. These commands use `uv` to run `ruff`, `pyright` and `pytest`
 within the project environment.
 
-| Command          | Description                                   |
-|:-----------------|:----------------------------------------------|
-| `make`           | Show the help menu (default)                  |
-| `make test`      | Run `pytest` tests with coverage              |
-| `make lint`      | Run `ruff` linting checks                     |
-| `make typecheck` | Run `pyright` static type analysis            |
-| `make check`     | Run both linting and type checking            |
-| `make fix`       | Automatically fix linting issues              |
-| `make format`    | Format code with `ruff`                       |
-| `make fmt`       | Fix, format, and run all checks (convenience) |
-| `make all`       | Run all non-mutating checks                   |
+| Command              | Description                                   |
+|:---------------------|:----------------------------------------------|
+| `make`               | Show the help menu (default)                  |
+| `make test`          | Run `pytest` tests with coverage              |
+| `make test-parallel` | Run `pytest` tests with coverage, using xdist |
+| `make lint`          | Run `ruff` linting checks                     |
+| `make typecheck`     | Run `pyright` static type analysis            |
+| `make check`         | Run both linting and type checking            |
+| `make fix`           | Automatically fix linting issues              |
+| `make format`        | Format code with `ruff`                       |
+| `make fmt`           | Fix, format, and run all checks (convenience) |
+| `make all`           | Run all non-mutating checks                   |
