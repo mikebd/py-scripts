@@ -3,6 +3,7 @@
 # Default target: show help
 help:
 	@echo "Available commands:"
+	@echo "  make test      - Run tests and coverage with pytest"
 	@echo "  make lint      - Run ruff linting checks"
 	@echo "  make typecheck - Run pyright type analysis"
 	@echo "  make check     - Run linting and type checking"
@@ -12,9 +13,12 @@ help:
 	@echo "  make all       - Run all non-mutating checks"
 
 # Default: non-mutating checks (CI-safe)
-all: check
+all: check test
 
 check: lint typecheck
+
+test:
+	uv run pytest
 
 lint:
 	uv run ruff check .
