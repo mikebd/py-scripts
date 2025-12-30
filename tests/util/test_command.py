@@ -35,3 +35,12 @@ def test_run_command_capture_lines_failure(mocker: MockerFixture):
     lines = run_command_capture_lines(["bad_cmd"])
 
     assert lines == []
+
+
+def test_run_command_capture_lines_empty(mocker: MockerFixture):
+    mocker.patch(
+        "util.command.run_command_capture_text",
+        return_value=mocker.Mock(stdout=""),
+    )
+
+    assert not run_command_capture_lines(["ls"])

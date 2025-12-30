@@ -6,11 +6,9 @@ from util.command import run_command_capture_lines, run_command_capture_text
 
 
 def main():
-    # 1. Get old formulas
     print("Fetching old formulas...")
-    old_formulas = formulas()
+    old_formulas = brew_search()
 
-    # 2. Update brew
     print("Updating Homebrew...")
     update_output = ""
     try:
@@ -23,38 +21,39 @@ def main():
         print(e.stderr, file=sys.stderr)
         sys.exit(e.returncode)
 
-    # 3. Check if anything was updated
-    if "Already up-to-date." in update_output:
-        return
+    if "Already up-to-date." not in update_output:
+        print("Fetching new formulas...")
+        new_formulas = brew_search()
+        newly_added_formulas = sorted(list(new_formulas - old_formulas))
+        if newly_added_formulas:
+            brew_info(newly_added_formulas)
+        else:
+            print("No new formulas added.")
 
-    # 4. Get new formulas
-    print("Fetching new formulas...")
-    new_formulas = formulas()
-
-    # 5. Show info for newly added formulas
-    newly_added_formulas = sorted(list(new_formulas - old_formulas))
-    if newly_added_formulas:
-        print(f"Newly added formulas: {', '.join(newly_added_formulas)}")
-
-        # chunk_size 100 is a safe bet for most OS argument limits
-        chunk_size = 100
-        for i in range(0, len(newly_added_formulas), chunk_size):
-            chunk = newly_added_formulas[i : i + chunk_size]
-            try:
-                print(f"\n--- Fetching info for chunk {i // chunk_size + 1} ---")
-                subprocess.run(["brew", "info"] + chunk, check=True)
-            except subprocess.CalledProcessError as e:
-                print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
+    outdated_formulas_command = ["brew", "upgrade", "--formula", "--dry-run"]
+    if run_command_capture_lines(outdated_formulas_command):
+        print("Upgrade outdated formulas...")
+        subprocess.run(outdated_formulas_command)
     else:
-        print("No new formulas added.")
-
-    # 6. Outdated formulas
-    print("\n")
-    subprocess.run(["brew", "upgrade", "--formula", "--dry-run"])
+        print("No outdated formulas.")
 
 
-def formulas() -> set[str]:
+def brew_search() -> set[str]:
     return set(run_command_capture_lines(["brew", "search", "--formula", "/"]))
+
+
+def brew_info(newly_added_formulas: list[str]):
+    print(f"Newly added formulas: {', '.join(newly_added_formulas)}")
+
+    # chunk_size 100 is a safe bet for most OS argument limits
+    chunk_size = 100
+    for i in range(0, len(newly_added_formulas), chunk_size):
+        chunk = newly_added_formulas[i : i + chunk_size]
+        try:
+            print(f"\n--- Fetching info for chunk {i // chunk_size + 1} ---")
+            subprocess.run(["brew", "info"] + chunk, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":
