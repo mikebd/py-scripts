@@ -36,6 +36,8 @@ alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
 
 Identifies newly added Homebrew formulas after an update and displays their information.
 
+- Recommended environment variable to prevent implicit updates: `HOMEBREW_NO_AUTO_UPDATE=1`
+
 ## Development
 
 ### Setup

@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 [project.scripts]
-bu = "brew_info.main:main"
+bu = "brew.update:update"
 
 [dependency-groups]
 dev = [

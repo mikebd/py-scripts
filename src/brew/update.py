@@ -5,7 +5,12 @@ import sys
 from util.command import run_command_capture_lines, run_command_capture_text
 
 
-def main():
+def update():
+    """
+    Updates Homebrew formulas and displays:
+     - full info for new formulas
+     - outdated formulas
+    """
     print("Fetching old formulas...")
     old_formulas = brew_search()
 
@@ -57,4 +62,4 @@ def brew_info(newly_added_formulas: list[str]):
 
 
 if __name__ == "__main__":
-    main()
+    update()
