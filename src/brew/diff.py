@@ -5,11 +5,11 @@ from util.command.runner import Runner
 from util.command.ssh_runner import SshRunner
 
 
-def sync():
+def diff():
     """
-    Synchronize manually installed formulas between hosts.
+    Compare manually installed formulas between hosts.
     """
-    parser = argparse.ArgumentParser(description="Synchronize Homebrew formulas.")
+    parser = argparse.ArgumentParser(description="Compare Homebrew formulas.")
     parser.add_argument("remote_host", help="The remote host to compare formulas with.")
     args = parser.parse_args()
     remote_host = args.remote_host
@@ -36,4 +36,4 @@ def _brew_ssh_path(command: list[str], runner: Runner | None = None):
 
 
 if __name__ == "__main__":
-    sync()
+    diff()

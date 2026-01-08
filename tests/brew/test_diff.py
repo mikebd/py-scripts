@@ -1,12 +1,12 @@
 from pytest_mock import MockerFixture
 
-from brew.sync import brew_list_manually_installed_formulas
+from brew.diff import brew_list_manually_installed_formulas
 from util.command.ssh_runner import SshRunner
 
 
 def test_brew_list_manually_installed_formulas_local(mocker: MockerFixture):
     mock_capture_lines = mocker.patch(
-        "brew.sync.capture_lines", return_value=["formula1", "formula2"]
+        "brew.diff.capture_lines", return_value=["formula1", "formula2"]
     )
 
     result = brew_list_manually_installed_formulas()
@@ -19,7 +19,7 @@ def test_brew_list_manually_installed_formulas_local(mocker: MockerFixture):
 
 def test_brew_list_manually_installed_formulas_remote(mocker: MockerFixture):
     mock_capture_lines = mocker.patch(
-        "brew.sync.capture_lines", return_value=["remote1", "remote2"]
+        "brew.diff.capture_lines", return_value=["remote1", "remote2"]
     )
     runner = SshRunner(host="remote-host")
 

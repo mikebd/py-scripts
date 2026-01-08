@@ -32,6 +32,10 @@ alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
 
 ## Available Scripts
 
+### Brew Diff (`brew_diff <remote_host>`)
+
+Campares manually installed Homebrew formulas betweel the local and remote hosts.
+
 ### Brew Info New Formula (`bu`)
 
 Identifies newly added Homebrew formulas after an update and displays their information.

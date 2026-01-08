@@ -19,8 +19,8 @@ classifiers = [
 ]
 
 [project.scripts]
+brew_diff = "brew.diff:diff"
 bu = "brew.update:update"
-brew_sync = "brew.sync:sync"
 
 [dependency-groups]
 dev = [
