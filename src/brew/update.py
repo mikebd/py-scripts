@@ -2,7 +2,7 @@
 import subprocess
 import sys
 
-from util.command import run_command_capture_lines, run_command_capture_text
+from util.command.command import capture_lines, capture_text
 
 
 def update():
@@ -17,7 +17,7 @@ def update():
     print("Updating Homebrew...")
     update_output = ""
     try:
-        result = run_command_capture_text(["brew", "update"])
+        result = capture_text(["brew", "update"])
         update_output = result.stdout
         print(update_output, end="")
     except subprocess.CalledProcessError as e:
@@ -36,7 +36,7 @@ def update():
             print("No new formulas added.")
 
     outdated_formulas_command = ["brew", "upgrade", "--formula", "--dry-run"]
-    if run_command_capture_lines(outdated_formulas_command):
+    if capture_lines(outdated_formulas_command):
         print("Upgrade outdated formulas...")
         subprocess.run(outdated_formulas_command)
     else:
@@ -44,7 +44,7 @@ def update():
 
 
 def brew_search() -> set[str]:
-    return set(run_command_capture_lines(["brew", "search", "--formula", "/"]))
+    return set(capture_lines(["brew", "search", "--formula", "/"]))
 
 
 def brew_info(newly_added_formulas: list[str]):
