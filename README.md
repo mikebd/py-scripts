@@ -47,7 +47,7 @@ automating the display of `brew info` output for newly added formulas.
 
 Recommended environment variable to prevent implicit updates: `HOMEBREW_NO_AUTO_UPDATE=1`
 
-#### Examples
+#### bu Examples
 
 Already up to date:
 
@@ -56,6 +56,29 @@ Already up to date:
 New formula + outdated packages:
 
 ![bu - one new formula](docs/images/bu-one-new-formula.png)
+
+#### bu Inspiration
+
+```bash
+#!/bin/bash
+
+old_formulas=$(brew search --formula / | sort)
+old_casks=$(brew search --cask / | sort)
+
+brew update
+
+new_formulas=$(brew search --formula / | sort)
+new_casks=$(brew search --cask / | sort)
+
+newly_added_formulas=$(comm -13 <(echo "$old_formulas") <(echo "$new_formulas"))
+newly_added_casks=$(comm -13 <(echo "$old_casks") <(echo "$new_casks"))
+
+echo "New Formulas:"
+echo "$newly_added_formulas" | xargs brew info --formula
+echo
+echo "New Casks:"
+echo "$newly_added_casks" | xargs brew info --cask
+```
 
 ## Development
 
