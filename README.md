@@ -1,6 +1,9 @@
 # mikebd's Scripts
 
-A personal collection of small Python command-line tools.
+A personal collection of small Python tools.
+
+Currently tested only on Linux ([Pop!_OS](https://system76.com/pop/) 22.04).  `brew` commands currently assume formulas
+only, cask support for `macOS` may be added in the future.
 
 ## Table of Contents
 
@@ -38,9 +41,11 @@ Campares manually installed Homebrew formulas betweel the local and remote hosts
 
 ### Brew Info New Formula (`bu`)
 
-Identifies newly added Homebrew formulas after an update and displays their information.
+One way I keep track of the evolving developer ecosystem is by paying close
+attention to new packages as they become available. This script simplifies that process by
+automating the display of `brew info` output for newly added formulas.
 
-- Recommended environment variable to prevent implicit updates: `HOMEBREW_NO_AUTO_UPDATE=1`
+Recommended environment variable to prevent implicit updates: `HOMEBREW_NO_AUTO_UPDATE=1`
 
 #### Examples
 
@@ -48,7 +53,7 @@ Already up to date:
 
 ![bu - no new formulas.png](docs/images/bu-no-new-formulas.png)
 
-New formula:
+New formula + outdated packages:
 
 ![bu - one new formula](docs/images/bu-one-new-formula.png)
 
