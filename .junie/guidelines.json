@@ -1,0 +1,34 @@
+{
+  "guidelines": [
+    {
+      "id": "python-standards",
+      "title": "Python Standards",
+      "description": "Follow Python 3.13+ best practices. Use `uv` for package management and script execution.",
+      "severity": "critical"
+    },
+    {
+      "id": "linting-formatting",
+      "title": "Linting and Formatting",
+      "description": "Use `ruff` for linting and formatting. Configuration is in `pyproject.toml`. Run `make lint` and `make format` or `make fmt` to ensure compliance.",
+      "severity": "high"
+    },
+    {
+      "id": "type-checking",
+      "title": "Type Checking",
+      "description": "Use `pyright` for static type analysis in strict mode. Run `make typecheck` to verify types.",
+      "severity": "high"
+    },
+    {
+      "id": "testing",
+      "title": "Testing",
+      "description": "Use `pytest` for testing. All new code should have tests in the `tests/` directory. Run `make test` to execute tests with coverage. Minimum coverage goal is 70% as per `pyproject.toml` comment.",
+      "severity": "high"
+    },
+    {
+      "id": "workflow",
+      "title": "Workflow",
+      "description": "Use the provided `Makefile` for common tasks: `make check` (lint + typecheck), `make all` (lint + typecheck + test).",
+      "severity": "medium"
+    }
+  ]
+}
