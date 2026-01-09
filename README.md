@@ -42,6 +42,16 @@ Identifies newly added Homebrew formulas after an update and displays their info
 
 - Recommended environment variable to prevent implicit updates: `HOMEBREW_NO_AUTO_UPDATE=1`
 
+#### Examples
+
+Already up to date:
+
+![bu - no new formulas.png](docs/images/bu-no-new-formulas.png)
+
+New formula:
+
+![bu - one new formula](docs/images/bu-one-new-formula.png)
+
 ## Development
 
 ### Setup
