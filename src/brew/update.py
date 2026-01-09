@@ -55,7 +55,7 @@ def brew_info(newly_added_formulas: list[str]):
     for i in range(0, len(newly_added_formulas), chunk_size):
         chunk = newly_added_formulas[i : i + chunk_size]
         try:
-            print(f"\n--- Fetching info for chunk {i // chunk_size + 1} ---")
+            # print(f"\n--- Fetching info for chunk {i // chunk_size + 1} ---")
             subprocess.run(["brew", "info"] + chunk, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error running brew info for a chunk: {e}", file=sys.stderr)
