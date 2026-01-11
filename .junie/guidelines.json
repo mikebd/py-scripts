@@ -1,33 +1,81 @@
 {
   "guidelines": [
     {
-      "id": "python-standards",
-      "title": "Python Standards",
-      "description": "Follow Python 3.13+ best practices. Use `uv` for package management and script execution.",
+      "id": "project-intent",
+      "title": "Project Intent and Scope",
+      "description": "This is a personal, production-quality collection of small Python tools. The codebase prioritizes correctness, clarity, and minimalism over abstraction or extensibility. Changes should be narrowly scoped to the requested task.",
       "severity": "critical"
     },
     {
-      "id": "linting-formatting",
-      "title": "Linting and Formatting",
-      "description": "Use `ruff` for linting and formatting. Configuration is in `pyproject.toml`. Run `make lint` and `make format` or `make fmt` to ensure compliance.",
+      "id": "python-standards",
+      "title": "Python Standards",
+      "description": "Target Python 3.13+ exclusively. Do not add compatibility code for earlier Python versions. Prefer modern Python features and standard library APIs. Type annotations are expected for all non-trivial functions and public interfaces.",
+      "severity": "critical"
+    },
+    {
+      "id": "tooling-authority",
+      "title": "Tooling Authority",
+      "description": "Use `uv` for dependency management and script execution. Use `ruff` for linting and formatting, `pyright` for static type analysis in strict mode, and `pytest` for testing. Configuration in `pyproject.toml` is authoritative.",
+      "severity": "high"
+    },
+    {
+      "id": "dependency-policy",
+      "title": "Dependency Policy",
+      "description": "Do not introduce new runtime or development dependencies without explicit permission. Prefer the Python standard library and existing project dependencies. If a new dependency appears necessary, ask for confirmation and justify its inclusion.",
+      "severity": "critical"
+    },
+    {
+      "id": "linting-and-formatting",
+      "title": "Linting and Formatting Behavior",
+      "description": "Generated or modified code must comply with `ruff` linting and formatting rules. Do not reformat or restyle existing code unless it is directly related to the requested change.",
       "severity": "high"
     },
     {
       "id": "type-checking",
-      "title": "Type Checking",
-      "description": "Use `pyright` for static type analysis in strict mode. Run `make typecheck` to verify types.",
+      "title": "Type Checking Discipline",
+      "description": "All new or modified code must satisfy `pyright` strict type checking. Do not weaken type strictness or suppress type errors unless explicitly requested.",
       "severity": "high"
     },
     {
-      "id": "testing",
-      "title": "Testing",
-      "description": "Use `pytest` for testing. All new code should have tests in the `tests/` directory. Run `make test` to execute tests with coverage. Minimum coverage goal is 70% as per `pyproject.toml` comment.",
+      "id": "testing-requirements",
+      "title": "Testing Requirements",
+      "description": "New behavior or bug fixes must be accompanied by appropriate tests in the `tests/` directory. Existing tests must not be weakened or removed without explicit instruction. Test changes should preserve or improve coverage and behavioral guarantees.",
       "severity": "high"
+    },
+    {
+      "id": "coverage-expectations",
+      "title": "Coverage Expectations",
+      "description": "Aim for at least 70% coverage for new and changed code unless explicitly instructed otherwise. If coverage would decrease due to a change, additional tests should be added unless explicitly instructed otherwise.",
+      "severity": "medium"
+    },
+    {
+      "id": "error-handling-strategy",
+      "title": "Error Handling Strategy",
+      "description": "Prefer raising descriptive exceptions or allowing them to bubble up over returning `None`, error codes, or empty collections to signal failure. For CLI tools, catch exceptions at the entry point to provide clean user-facing error messages and appropriate exit codes. Do not suppress or swallow exceptions unless explicitly requested otherwise or when it is the intended semantic behavior of a narrow utility.",
+      "severity": "high"
+    },
+    {
+      "id": "refactoring-boundaries",
+      "title": "Refactoring Boundaries",
+      "description": "Do not refactor existing implementation code unless it is necessary to fulfill the requested change. Avoid drive-by cleanups, architectural changes, or stylistic refactors. Prefer minimal, localized diffs.",
+      "severity": "critical"
+    },
+    {
+      "id": "testability-refactoring-constraint",
+      "title": "Testability Refactoring Constraint",
+      "description": "Do not refactor implementation code solely to improve testability if the refactoring would change non-test behavior, control flow, public interfaces, or observable semantics. If improved testability would require such changes, ask for explicit confirmation before proceeding.",
+      "severity": "critical"
+    },
+    {
+      "id": "docstring-standard",
+      "title": "Docstring Standard",
+      "description": "Use Google-style docstrings for non-trivial public interfaces. Since type annotations are mandatory and enforced by pyright, do not repeat type information within the docstring. Focus purely on the semantic description of parameters and return values.",
+      "severity": "medium"
     },
     {
       "id": "workflow",
       "title": "Workflow",
-      "description": "Use the provided `Makefile` for common tasks: `make check` (lint + typecheck), `make all` (lint + typecheck + test).",
+      "description": "Use the provided `Makefile` targets as the reference workflow (`make lint`, `make typecheck`, `make test`, `make fmt`, `make all`). Generated changes should be compatible with these workflows without requiring additional steps.",
       "severity": "medium"
     }
   ]
