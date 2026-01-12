@@ -15,20 +15,13 @@ def update():
     old_formulas = brew_search()
 
     print("Updating Homebrew...")
-    update_output = ""
-    try:
-        result = capture_text(["brew", "update"])
-        update_output = result.stdout
-        print(update_output, end="")
-    except subprocess.CalledProcessError as e:
-        print(f"Brew update failed: {e}", file=sys.stderr)
-        print(e.stdout, end="")
-        print(e.stderr, file=sys.stderr)
-        sys.exit(e.returncode)
+    update_output = capture_text(["brew", "update"]).stdout
+    print(update_output, end="")
 
     if "Already up-to-date." not in update_output:
         print("Fetching new formulas...")
         new_formulas = brew_search()
+
         newly_added_formulas = sorted(list(new_formulas - old_formulas))
         if newly_added_formulas:
             brew_info(newly_added_formulas)
@@ -36,7 +29,9 @@ def update():
             print("No new formulas added.")
 
     outdated_formulas_command = ["brew", "upgrade", "--formula", "--dry-run"]
-    if capture_lines(outdated_formulas_command):
+    outdated_lines = capture_lines(outdated_formulas_command)
+
+    if outdated_lines:
         print("Upgrade outdated formulas...")
         subprocess.run(outdated_formulas_command)
     else:
@@ -62,4 +57,14 @@ def brew_info(newly_added_formulas: list[str]):
 
 
 if __name__ == "__main__":
-    update()
+    try:
+        update()
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        if e.stdout:
+            print(e.stdout, end="")
+        if e.stderr:
+            print(e.stderr, file=sys.stderr, end="")
+        sys.exit(e.returncode)
+    except KeyboardInterrupt:
+        sys.exit(130)

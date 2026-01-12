@@ -1,5 +1,6 @@
 import subprocess
 
+from pytest import raises
 from pytest_mock import MockerFixture
 
 from util.command.command import capture_lines, capture_text
@@ -32,9 +33,8 @@ def test_capture_lines_failure(mocker: MockerFixture):
         side_effect=subprocess.CalledProcessError(1, "cmd", stderr="error"),
     )
 
-    lines = capture_lines(["bad_cmd"])
-
-    assert lines == []
+    with raises(subprocess.CalledProcessError):
+        capture_lines(["bad_cmd"])
 
 
 def test_capture_lines_empty(mocker: MockerFixture):

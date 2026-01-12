@@ -1,5 +1,4 @@
 import subprocess
-import sys
 from dataclasses import dataclass
 from subprocess import CompletedProcess
 from typing import override
@@ -53,9 +52,5 @@ class SshRunner(Runner):
     @override
     def capture_lines(self, command: list[str]) -> list[str]:
         """Runs a shell command over SSH and returns its output as a list of lines."""
-        try:
-            result = self.capture_text(command)
-            return result.stdout.strip().splitlines()
-        except subprocess.CalledProcessError as e:
-            print(f"Error running command {' '.join(command)}: {e.stderr}", file=sys.stderr)
-            return []
+        result = self.capture_text(command)
+        return result.stdout.strip().splitlines()
