@@ -38,17 +38,21 @@ dev = [
 [tool.coverage.run]
 omit = ["*/__init__.py"]
 
+# Pyright Configuration: https://microsoft.github.io/pyright/#/configuration
 [tool.pyright]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 
-# Keep noise low at first
-reportMissingTypeStubs = false
-reportUnknownMemberType = false
-reportUnknownVariableType = false
-reportUnknownArgumentType = false
-
-# Good hygiene, low friction
+reportDeprecated = true
+reportImplicitOverride = true
+reportMissingTypeStubs = true
+reportPrivateUsage = true
+reportUnknownArgumentType = true
+reportUnknownMemberType = true
+reportUnknownVariableType = true
+reportUnnecessaryCast = true
+reportUnnecessaryIsInstance = true
+reportUnnecessaryTypeIgnoreComment = true
 reportUnusedImport = true
 reportUnusedVariable = true
 

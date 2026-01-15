@@ -27,6 +27,7 @@ class SshRunner(Runner):
         if self.connect_timeout_seconds <= 0:
             raise ValueError("Connect timeout must be positive")
 
+    @override
     def __str__(self) -> str:
         return (
             f"SSH to {self._connection_string} (connect timeout: {self.connect_timeout_seconds}s)"
