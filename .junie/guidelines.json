@@ -77,6 +77,30 @@
       "title": "Workflow",
       "description": "Use the provided `Makefile` targets as the reference workflow (`make lint`, `make typecheck`, `make test`, `make fmt`, `make all`). Generated changes should be compatible with these workflows without requiring additional steps.",
       "severity": "medium"
+    },
+    {
+      "id": "clean-plan-end",
+      "title": "End of plan cleanliness",
+      "description": "Run `make fmt` and `make test` before completing a plan.  These must complete successfully without errors or warnings.  Stop and ask for direction if you are unable to satisfy this.  This rule defines completion requirements, not intermediate development steps.",
+      "severity": "critical"
+    },
+    {
+      "id": "ruff-compliance",
+      "title": "Ruff Compliance",
+      "description": "Ensure that all code adheres to the Ruff linting rules as specified in `pyproject.toml`.",
+      "severity": "critical"
+    },
+    {
+      "id": "no-init-all",
+      "title": "No init all",
+      "description": "In __init__.py: no re-exports, no __all__, modules are imported explicitly.",
+      "severity": "critical"
+    },
+    {
+      "id": "tests-not-packages",
+      "title": "Tests Must Not Be Python Packages",
+      "description": "The top-level tests directory MUST NOT be a Python package. The tests/ directory must not contain an __init__.py file. Tests are discovered and executed by pytest as plain modules and must import only from the installed project package, never from other test modules. Shared test functionality must be provided via conftest.py or explicit helper subpackages within tests/, not by making tests/ itself a package.",
+      "severity": "critical"
     }
   ]
 }
