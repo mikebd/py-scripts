@@ -82,6 +82,20 @@ echo "New Casks:"
 echo "$newly_added_casks" | xargs brew info --cask
 ```
 
+### JetBrains Codex Fix (`codex_fix`)
+
+JetBrains IDEs bundle a Codex binary that can fail on Linux because of GLIBC incompatibilities. This script inspects cache folders (default `~/.cache/JetBrains`), extracts the latest `Codex CLI version mismatch` entry from each `idea.log`, downloads the matching musl Codex release from SourceForge, and installs it as `codex-x86_64-unknown-linux-gnu` inside the IDE cache so the IDE uses a compatible executable.
+
+Run it via `uv run codex_fix`. Useful flags:
+- `--cache-root` to point at a different JetBrains cache directory.
+- `--ide-dir` (repeatable) to target specific IDE caches directly.
+- `--all` to operate on every cache directory that matches any include/exclude filters instead of just one.
+- `--include` / `--exclude` regexes to filter which IDE caches are touched.
+- `--version` to override the parsed version and always install a specific Codex release.
+- `--timeout-s` to control the download timeout.
+
+Backups of existing binaries are created before replacement, and each install is verified by running the installed binary with `--version` so failures are reported per-IDE in the summary.
+
 ## Development
 
 ### Setup

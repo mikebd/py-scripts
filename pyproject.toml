@@ -21,6 +21,7 @@ classifiers = [
 [project.scripts]
 brew_diff = "brew.diff:diff"
 bu = "brew.update:update"
+codex_fix = "jetbrains.codex_fix:main"
 
 [dependency-groups]
 dev = [
@@ -55,6 +56,10 @@ reportUnnecessaryIsInstance = true
 reportUnnecessaryTypeIgnoreComment = true
 reportUnusedImport = true
 reportUnusedVariable = true
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = "none"
 
 [tool.pytest.ini_options]
 # Minimum coverage: --cov-fail-under=70
