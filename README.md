@@ -1,6 +1,9 @@
-# mikebd's Scripts
+# mikebd's Python Scripts
 
 A personal collection of small Python tools.
+
+For simpler shell-first utilities, also check [`mikebd/bash-scripts`](https://github.com/mikebd/bash-scripts).
+That repo is the lighter-weight Bash companion to this one and can act as a staging ground for utilities that may later be promoted into Python when they need more structure, tests, or packaging.
 
 Currently tested only on Linux ([Pop!_OS](https://system76.com/pop/) 22.04).  `brew` commands currently assume formulas
 only, cask support for `macOS` may be added in the future.
