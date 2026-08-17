@@ -101,6 +101,12 @@ Backups of existing binaries are created before replacement, and each install is
 
 ## Development
 
+### Branch Context
+
+This repository's optional Branch Context is maintained on the [`py-scripts-context` branch](https://github.com/mikebd/public-branch-context/tree/py-scripts-context) of the public Branch Context repository. It provides branch-scoped working context for coding-agent workflows, including resumability, decision traceability, handoffs, and reproducible investigations.
+
+See the [Branch Context guidance](https://github.com/mikebd/ai-agent-skills/tree/main/shared/references/branch-context) for the overall model and conventions.
+
 ### Setup
 
 ```bash
