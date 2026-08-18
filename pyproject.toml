@@ -19,6 +19,7 @@ classifiers = [
 ]
 
 [project.scripts]
+ai-agent-launcher = "ai_agent_launcher.cli:main"
 brew_diff = "brew.diff:diff"
 bu = "brew.update:update"
 codex_fix = "jetbrains.codex_fix:main"
