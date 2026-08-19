@@ -2,9 +2,11 @@
 
 import argparse
 from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from ai_agent_launcher._models import AgentId
+from ai_agent_launcher._models import AgentId, SessionReference
 from ai_agent_launcher._runtime import RunContext
 
 
@@ -32,4 +34,34 @@ class RuntimeAgentAdapter(AgentAdapter, Protocol):
         arguments: argparse.Namespace,
     ) -> int:
         """Run the selected agent and return its process exit status."""
+        ...
+
+
+@dataclass(frozen=True)
+class AgentSessionMetadata:
+    """Agent-neutral session facts used by generated launcher lifecycle commands."""
+
+    session: SessionReference
+    working_directory: Path
+    forked_from: SessionReference | None
+
+
+@runtime_checkable
+class SessionLifecycleAdapter(RuntimeAgentAdapter, Protocol):
+    """Runtime adapter extension for session-aware launcher operations."""
+
+    def fork_session(
+        self,
+        context: RunContext,
+        settings: Mapping[str, object],
+        parent: SessionReference,
+        passthrough_args: tuple[str, ...],
+    ) -> SessionReference:
+        """Start and identify exactly one child session."""
+        ...
+
+    def find_session(
+        self, settings: Mapping[str, object], session: SessionReference
+    ) -> AgentSessionMetadata:
+        """Find exactly one session metadata record by opaque agent session reference."""
         ...

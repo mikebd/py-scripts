@@ -11,8 +11,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from ai_agent_launcher._adapters import AgentSessionMetadata
 from ai_agent_launcher._errors import ConfigError, LauncherError
-from ai_agent_launcher._models import AgentId
+from ai_agent_launcher._models import AgentId, SessionReference
 from ai_agent_launcher._runtime import RunContext
 from ai_agent_launcher._sessions import CodexSessionCatalog
 
@@ -133,6 +134,63 @@ class CodexAdapter:
     def session_catalog(self, settings_values: Mapping[str, object]) -> CodexSessionCatalog:
         """Return read-only session discovery for the selected Codex home."""
         return CodexSessionCatalog(self._home(CodexSettings.from_mapping(settings_values)))
+
+    def find_session(
+        self, settings_values: Mapping[str, object], session: SessionReference
+    ) -> AgentSessionMetadata:
+        """Find one Codex session and project it into neutral lifecycle metadata."""
+        if session.agent_id != self.identifier:
+            raise LauncherError(f"Codex cannot resolve a {session.agent_id} session")
+        record = self.session_catalog(settings_values).find_unique(session.value)
+        parent = (
+            SessionReference(self.identifier, record.forked_from_identifier)
+            if record.forked_from_identifier is not None
+            else None
+        )
+        return AgentSessionMetadata(
+            session=session,
+            working_directory=record.working_directory.resolve(),
+            forked_from=parent,
+        )
+
+    def fork_session(
+        self,
+        context: RunContext,
+        settings_values: Mapping[str, object],
+        parent: SessionReference,
+        passthrough_args: tuple[str, ...],
+    ) -> SessionReference:
+        """Fork one Codex session and require exactly one new matching record."""
+        if parent.agent_id != self.identifier:
+            raise LauncherError(f"Codex cannot fork a {parent.agent_id} session")
+        catalog = self.session_catalog(settings_values)
+        before = {record.source_file for record in catalog.records()}
+        arguments = argparse.Namespace(
+            session_id=None,
+            fork_session_id=parent.value,
+            model=None,
+            reasoning_effort=None,
+            sandbox=None,
+        )
+        fork_context = RunContext(
+            worktree_dir=context.worktree_dir,
+            configured_writable_dirs=context.configured_writable_dirs,
+            requested_writable_dirs=context.requested_writable_dirs,
+            passthrough_args=passthrough_args,
+        )
+        exit_status = self.run(fork_context, settings_values, arguments)
+        if exit_status != 0:
+            raise LauncherError(f"Codex fork exited with status {exit_status}")
+        candidates = [
+            record
+            for record in catalog.records()
+            if record.source_file not in before
+            and record.forked_from_identifier == parent.value
+            and record.working_directory.resolve() == context.worktree_dir
+        ]
+        if len(candidates) != 1:
+            raise LauncherError(f"expected one new forked Codex session, found {len(candidates)}")
+        return SessionReference(self.identifier, candidates[0].identifier)
 
     def _home(self, settings: CodexSettings) -> Path:
         environment_home = os.environ.get("CODEX_HOME")
