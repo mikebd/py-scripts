@@ -67,6 +67,20 @@ class LauncherLifecycle:
             self._context(metadata, passthrough_args), self._settings(metadata.agent_id), arguments
         )
 
+    def prepare(self, worktree_dir: Path, preparation_path: Path | None) -> None:
+        """Run one validated launcher preparation helper for a Git worktree."""
+        if preparation_path is None:
+            return
+        try:
+            result = subprocess.run(
+                [str(preparation_path), "--target", str(worktree_dir)],
+                check=False,
+            )
+        except OSError as error:
+            raise LauncherError(f"unable to run launcher preparation: {error}") from error
+        if result.returncode != 0:
+            raise LauncherError(f"launcher preparation failed with exit status {result.returncode}")
+
     def pin(
         self,
         launcher: Path,
@@ -179,14 +193,4 @@ class LauncherLifecycle:
         return adapter
 
     def _run_preparation(self, metadata: LauncherMetadata) -> None:
-        if metadata.preparation_path is None:
-            return
-        try:
-            result = subprocess.run(
-                [str(metadata.preparation_path), "--target", str(metadata.worktree_dir)],
-                check=False,
-            )
-        except OSError as error:
-            raise LauncherError(f"unable to run launcher preparation: {error}") from error
-        if result.returncode != 0:
-            raise LauncherError(f"launcher preparation failed with exit status {result.returncode}")
+        self.prepare(metadata.worktree_dir, metadata.preparation_path)

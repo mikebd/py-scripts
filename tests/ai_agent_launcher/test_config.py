@@ -16,6 +16,7 @@ def test_missing_default_configuration_uses_empty_values(
 
     assert default_config_path() == tmp_path / "config" / "ai-agent-launcher" / "config.toml"
     assert config.core.writable_dirs == ()
+    assert config.core.launcher_directory is None
     assert config.agent_settings == {}
 
 
@@ -25,6 +26,7 @@ def test_configuration_parses_core_and_selected_agent(tmp_path: Path) -> None:
         """
 [core]
 writable_dirs = ["/tmp/one"]
+launcher_directory = "/tmp/launchers"
 
 [agents.codex]
 model = "test-model"
@@ -35,6 +37,7 @@ model = "test-model"
     config = load_config(config_path, (AgentId("codex"),))
 
     assert config.core.writable_dirs == ("/tmp/one",)
+    assert config.core.launcher_directory == Path("/tmp/launchers")
     assert config.agent_settings[AgentId("codex")] == {"model": "test-model"}
 
 
@@ -44,6 +47,7 @@ model = "test-model"
         ("[core\nwritable_dirs = []", "invalid TOML"),
         ("unknown = true", "unknown configuration"),
         ("[core]\nwritable_dirs = [1]", "array of strings"),
+        ('[core]\nlauncher_directory = "relative"', "absolute path"),
         ('[agents.claude]\nmodel = "x"', "unsupported agent"),
     ],
 )

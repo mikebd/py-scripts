@@ -16,6 +16,7 @@ class CoreConfig:
     """Configuration shared by every supported agent."""
 
     writable_dirs: tuple[str, ...]
+    launcher_directory: Path | None
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,9 @@ def load_config(
     path = default_config_path() if explicit_path is None else explicit_path.expanduser()
     if not path.exists():
         if explicit_path is None:
-            return LauncherConfig(core=CoreConfig(writable_dirs=()), agent_settings={})
+            return LauncherConfig(
+                core=CoreConfig(writable_dirs=(), launcher_directory=None), agent_settings={}
+            )
         raise ConfigError(f"configuration file does not exist: {path}")
     if not path.is_file():
         raise ConfigError(f"configuration path is not a file: {path}")
@@ -65,7 +68,7 @@ def load_config(
 
 def _parse_core(value: object) -> CoreConfig:
     table = _require_table(value, "[core]")
-    unexpected_keys = set(table).difference({"writable_dirs"})
+    unexpected_keys = set(table).difference({"writable_dirs", "launcher_directory"})
     if unexpected_keys:
         keys = ", ".join(sorted(unexpected_keys))
         raise ConfigError(f"unknown [core] setting: {keys}")
@@ -78,7 +81,20 @@ def _parse_core(value: object) -> CoreConfig:
         if not isinstance(item, str):
             raise ConfigError("core.writable_dirs must be an array of strings")
         writable_dirs.append(item)
-    return CoreConfig(writable_dirs=tuple(writable_dirs))
+    launcher_directory = table.get("launcher_directory")
+    if launcher_directory is not None:
+        if not isinstance(launcher_directory, str) or not launcher_directory:
+            raise ConfigError("core.launcher_directory must be a non-empty absolute path")
+        candidate = Path(launcher_directory).expanduser()
+        if not candidate.is_absolute():
+            raise ConfigError("core.launcher_directory must be a non-empty absolute path")
+        launcher_directory_path: Path | None = candidate.resolve()
+    else:
+        launcher_directory_path = None
+    return CoreConfig(
+        writable_dirs=tuple(writable_dirs),
+        launcher_directory=launcher_directory_path,
+    )
 
 
 def _parse_agent_settings(

@@ -17,6 +17,7 @@ from ai_agent_launcher._migration import migrate_legacy_config, migrate_legacy_l
 from ai_agent_launcher._models import AgentId
 from ai_agent_launcher._registry import AgentRegistry
 from ai_agent_launcher._runtime import RunContext, resolve_worktree
+from ai_agent_launcher._worktrees import CreatedWorktree, WorktreeLifecycle
 
 _DISTRIBUTION_NAME = "mikebd-py-scripts"
 
@@ -49,6 +50,7 @@ def build_parser(registry: AgentRegistry) -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command")
     _add_run_parser(commands, registry)
     _add_launcher_parser(commands, registry)
+    _add_worktree_parser(commands, registry)
     _add_migration_parser(commands, registry)
     return parser
 
@@ -61,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     if not arguments:
         parser.print_help()
         return 0
-    namespace = parser.parse_args(arguments)
+    namespace = parser.parse_args(_normalize_worktree_suffix(arguments))
     if namespace.command is None:
         parser.print_help()
         return 0
@@ -83,6 +85,8 @@ def _dispatch(
         return _run(namespace, registry)
     if namespace.command == "launcher":
         return _launcher(namespace, registry, parser, arguments)
+    if namespace.command == "worktree":
+        return _worktree(namespace, registry)
     if namespace.command == "migrate":
         return _migrate(namespace)
     parser.print_help()
@@ -158,6 +162,47 @@ def _launcher_create(namespace: argparse.Namespace, lifecycle: LauncherLifecycle
         tuple(namespace.requested_writable_dirs),
     )
     return 0
+
+
+def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
+    """Create a Git worktree and its unpinned generated launcher."""
+    config = load_config(namespace.config, registry.identifiers)
+    lifecycle = LauncherLifecycle(registry, config)
+    worktrees = WorktreeLifecycle(config, lifecycle)
+    agent_id = AgentId(namespace.agent)
+    if namespace.worktree_command == "new":
+        result = worktrees.new(
+            agent_id,
+            namespace.worktree_dir,
+            namespace.branch,
+            namespace.from_ref,
+            namespace.launcher,
+            namespace.marker,
+            namespace.preparation_path,
+            tuple(namespace.requested_writable_dirs),
+        )
+    elif namespace.worktree_command == "stack":
+        result = worktrees.stack(
+            agent_id,
+            namespace.suffix,
+            namespace.marker,
+            namespace.preparation_path,
+            tuple(namespace.requested_writable_dirs),
+        )
+    else:
+        raise LauncherError("worktree command is required")
+    _print_created_worktree(result)
+    return 0
+
+
+def _print_created_worktree(result: CreatedWorktree) -> None:
+    print(f"created worktree: {result.worktree_dir}")
+    print(f"created branch: {result.branch}")
+    print(f"created launcher: {result.launcher}")
+    print(
+        "default session: none; run the launcher once, then use "
+        f"ai-agent-launcher launcher pin --launcher {result.launcher} --session-id ID"
+    )
 
 
 def _migrate(namespace: argparse.Namespace) -> int:
@@ -238,6 +283,29 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     _add_directories_argument(adopt)
 
 
+def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
+    worktree_parser = commands.add_parser("worktree", help="create Git worktrees and launchers")
+    worktree_commands = worktree_parser.add_subparsers(dest="worktree_command")
+    agent_choices = [str(value) for value in registry.identifiers]
+
+    new = worktree_commands.add_parser(
+        "new", help="create an explicit worktree and unpinned launcher"
+    )
+    new.add_argument("--agent", choices=agent_choices, required=True)
+    new.add_argument("--worktree-dir", type=Path, required=True)
+    new.add_argument("--branch")
+    new.add_argument("--from", dest="from_ref")
+    new.add_argument("--launcher", type=Path)
+    _add_worktree_launcher_options(new)
+
+    stack = worktree_commands.add_parser(
+        "stack", help="create strict sibling targets from the current worktree"
+    )
+    stack.add_argument("--agent", choices=agent_choices, required=True)
+    stack.add_argument("--suffix", required=True)
+    _add_worktree_launcher_options(stack)
+
+
 def _add_migration_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
     migration_parser = commands.add_parser(
         "migrate", help="explicitly migrate legacy Codex artifacts"
@@ -264,6 +332,12 @@ def _add_directories_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--add-dir", dest="requested_writable_dirs", action="append", default=[])
 
 
+def _add_worktree_launcher_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--marker", required=True)
+    parser.add_argument("--prepare", dest="preparation_path", type=Path)
+    _add_directories_argument(parser)
+
+
 def _add_source_target_arguments(parser: argparse.ArgumentParser, agent_choices: list[str]) -> None:
     parser.add_argument("--launcher", type=Path, required=True)
     parser.add_argument("--target-launcher", type=Path, required=True)
@@ -284,3 +358,35 @@ def _require_separator(
 ) -> None:
     if values and "--" not in arguments:
         parser.error("agent arguments must follow --")
+
+
+def _normalize_worktree_suffix(arguments: list[str]) -> list[str]:
+    """Preserve legacy `--suffix -child` parsing without changing other options."""
+    try:
+        worktree_index = arguments.index("worktree")
+    except ValueError:
+        return arguments
+    stack_index = worktree_index + 1
+    if stack_index >= len(arguments) or arguments[stack_index] != "stack":
+        return arguments
+
+    normalized: list[str] = []
+    index = 0
+    while index < len(arguments):
+        current = arguments[index]
+        if current == "--":
+            normalized.extend(arguments[index:])
+            break
+        if (
+            index > stack_index
+            and current == "--suffix"
+            and index + 1 < len(arguments)
+            and arguments[index + 1].startswith("-")
+            and not arguments[index + 1].startswith("--")
+        ):
+            normalized.append(f"--suffix={arguments[index + 1]}")
+            index += 2
+            continue
+        normalized.append(current)
+        index += 1
+    return normalized

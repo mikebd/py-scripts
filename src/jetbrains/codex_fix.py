@@ -325,4 +325,3 @@ def _entrypoint() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(_entrypoint())
-

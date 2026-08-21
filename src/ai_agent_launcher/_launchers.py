@@ -54,6 +54,18 @@ def build_metadata(
     )
 
 
+def validate_launcher_creation_inputs(
+    marker: str,
+    preparation_argument: str | Path | None,
+    local_writable_dirs: tuple[str, ...],
+) -> Path | None:
+    """Validate launcher inputs that do not depend on an existing worktree."""
+    _validate_marker(marker)
+    preparation_path = _preparation_path(preparation_argument)
+    _canonical_directories(local_writable_dirs)
+    return preparation_path
+
+
 def read_launcher(path_argument: str | Path) -> LauncherMetadata:
     """Read one supported versioned launcher without executing its contents."""
     path = Path(path_argument).expanduser()
