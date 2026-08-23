@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -56,15 +55,11 @@ class LauncherLifecycle:
         metadata = read_launcher(launcher)
         self._run_preparation(metadata)
         adapter = self._runtime_adapter(metadata.agent_id)
-        arguments = argparse.Namespace(
-            session_id=metadata.session.value if metadata.session is not None else None,
-            fork_session_id=None,
-            model=None,
-            reasoning_effort=None,
-            sandbox=None,
-        )
-        return adapter.run(
-            self._context(metadata, passthrough_args), self._settings(metadata.agent_id), arguments
+        return adapter.run_launcher(
+            self._context(metadata, passthrough_args),
+            self._settings(metadata.agent_id),
+            metadata.session,
+            passthrough_args,
         )
 
     def prepare(self, worktree_dir: Path, preparation_path: Path | None) -> None:

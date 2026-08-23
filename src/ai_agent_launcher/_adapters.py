@@ -36,6 +36,16 @@ class RuntimeAgentAdapter(AgentAdapter, Protocol):
         """Run the selected agent and return its process exit status."""
         ...
 
+    def run_launcher(
+        self,
+        context: RunContext,
+        settings: Mapping[str, object],
+        session: SessionReference | None,
+        passthrough_args: tuple[str, ...],
+    ) -> int:
+        """Run a generated launcher without exposing agent-specific options to core."""
+        ...
+
 
 @dataclass(frozen=True)
 class AgentSessionMetadata:

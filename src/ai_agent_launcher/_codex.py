@@ -131,6 +131,31 @@ class CodexAdapter:
         except OSError as error:
             raise LauncherError(f"unable to start Codex: {error}") from error
 
+    def run_launcher(
+        self,
+        context: RunContext,
+        settings_values: Mapping[str, object],
+        session: SessionReference | None,
+        passthrough_args: tuple[str, ...],
+    ) -> int:
+        """Translate generic generated-launcher metadata into Codex run options."""
+        if session is not None and session.agent_id != self.identifier:
+            raise LauncherError(f"Codex cannot run a {session.agent_id} session")
+        arguments = argparse.Namespace(
+            session_id=session.value if session is not None else None,
+            fork_session_id=None,
+            model=None,
+            reasoning_effort=None,
+            sandbox=None,
+        )
+        launcher_context = RunContext(
+            worktree_dir=context.worktree_dir,
+            configured_writable_dirs=context.configured_writable_dirs,
+            requested_writable_dirs=context.requested_writable_dirs,
+            passthrough_args=passthrough_args,
+        )
+        return self.run(launcher_context, settings_values, arguments)
+
     def session_catalog(self, settings_values: Mapping[str, object]) -> CodexSessionCatalog:
         """Return read-only session discovery for the selected Codex home."""
         return CodexSessionCatalog(self._home(CodexSettings.from_mapping(settings_values)))

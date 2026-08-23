@@ -9,11 +9,10 @@ from pathlib import Path
 from typing import Protocol
 
 from ai_agent_launcher._adapters import RuntimeAgentAdapter
-from ai_agent_launcher._config import default_config_path, load_config
+from ai_agent_launcher._config import load_config
 from ai_agent_launcher._defaults import default_registry
 from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._lifecycle import LauncherLifecycle
-from ai_agent_launcher._migration import migrate_legacy_config, migrate_legacy_launcher
 from ai_agent_launcher._models import AgentId
 from ai_agent_launcher._registry import AgentRegistry
 from ai_agent_launcher._runtime import RunContext, resolve_worktree
@@ -51,7 +50,6 @@ def build_parser(registry: AgentRegistry) -> argparse.ArgumentParser:
     _add_run_parser(commands, registry)
     _add_launcher_parser(commands, registry)
     _add_worktree_parser(commands, registry)
-    _add_migration_parser(commands, registry)
     return parser
 
 
@@ -87,8 +85,6 @@ def _dispatch(
         return _launcher(namespace, registry, parser, arguments)
     if namespace.command == "worktree":
         return _worktree(namespace, registry)
-    if namespace.command == "migrate":
-        return _migrate(namespace)
     parser.print_help()
     return 0
 
@@ -205,34 +201,6 @@ def _print_created_worktree(result: CreatedWorktree) -> None:
     )
 
 
-def _migrate(namespace: argparse.Namespace) -> int:
-    if namespace.migration_command == "config":
-        target = namespace.target if namespace.target is not None else default_config_path()
-        ignored = migrate_legacy_config(
-            namespace.source,
-            target,
-            trusted=namespace.trust_legacy_shell_config,
-            replace=namespace.replace,
-        )
-        if ignored:
-            print(
-                f"warning: ignored legacy configuration variables: {', '.join(ignored)}",
-                file=sys.stderr,
-            )
-        return 0
-    if namespace.migration_command == "launcher":
-        migrate_legacy_launcher(
-            namespace.source,
-            namespace.target,
-            agent_id=AgentId(namespace.agent),
-            marker=namespace.marker,
-            preparation_path=namespace.preparation_path,
-            replace=namespace.replace,
-        )
-        return 0
-    raise LauncherError("migration command is required")
-
-
 def _add_run_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
     run_parser = commands.add_parser("run", help="run an agent in an existing Git worktree")
     run_parser.add_argument(
@@ -304,28 +272,6 @@ def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     stack.add_argument("--agent", choices=agent_choices, required=True)
     stack.add_argument("--suffix", required=True)
     _add_worktree_launcher_options(stack)
-
-
-def _add_migration_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
-    migration_parser = commands.add_parser(
-        "migrate", help="explicitly migrate legacy Codex artifacts"
-    )
-    migrations = migration_parser.add_subparsers(dest="migration_command")
-    config = migrations.add_parser("config", help="migrate trusted legacy Bash configuration")
-    config.add_argument("--from", dest="source", type=Path, required=True)
-    config.add_argument("--to", dest="target", type=Path)
-    config.add_argument("--trust-legacy-shell-config", action="store_true")
-    config.add_argument("--replace", action="store_true")
-
-    launcher = migrations.add_parser("launcher", help="migrate one legacy generated launcher")
-    launcher.add_argument(
-        "--agent", choices=[str(value) for value in registry.identifiers], required=True
-    )
-    launcher.add_argument("--from", dest="source", type=Path, required=True)
-    launcher.add_argument("--to", dest="target", type=Path, required=True)
-    launcher.add_argument("--marker", required=True)
-    launcher.add_argument("--prepare", dest="preparation_path", type=Path, required=True)
-    launcher.add_argument("--replace", action="store_true")
 
 
 def _add_directories_argument(parser: argparse.ArgumentParser) -> None:

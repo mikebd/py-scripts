@@ -40,6 +40,13 @@ alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
 
 ## Available Scripts
 
+### AI Agent Launcher (`ai-agent-launcher`)
+
+Creates and runs local AI coding-agent workspaces through an agent-neutral
+core. The initial built-in adapter is `codex`. See the
+[AI agent launcher guide](docs/ai-agent-launcher.md) for tagged installation,
+configuration, and release guidance.
+
 ### Brew Diff (`brew_diff <remote_host>`)
 
 Campares manually installed Homebrew formulas betweel the local and remote hosts.
@@ -129,4 +136,6 @@ within the project environment.
 | `make fix`           | Automatically fix linting issues              |
 | `make format`        | Format code with `ruff`                       |
 | `make fmt`           | Fix, format, and run all checks (convenience) |
+| `make build`         | Build source and wheel distributions          |
+| `make release-check` | Validate a clean Git-tagged tool installation |
 | `make all`           | Run all non-mutating checks                   |

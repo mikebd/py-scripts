@@ -11,6 +11,7 @@ def test_empty_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     captured = capsys.readouterr()
     assert captured.out.startswith("usage: ai-agent-launcher")
     assert "--version" in captured.out
+    assert "migrate" not in captured.out
     assert captured.err == ""
 
 

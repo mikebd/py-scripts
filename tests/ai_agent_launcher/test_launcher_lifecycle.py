@@ -185,6 +185,73 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
     ]
 
 
+def test_run_uses_pinned_session_through_codex_adapter(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable = _fake_codex(tmp_path)
+    config_path = tmp_path / "config.toml"
+    home = tmp_path / "codex-home"
+    _config(config_path, executable, home)
+    launcher = tmp_path / "launcher"
+    output = tmp_path / "fake-codex.json"
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "pin",
+                "--launcher",
+                str(launcher),
+                "--session-id",
+                "parent-session",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "run",
+                "--launcher",
+                str(launcher),
+                "--",
+                "continue",
+            ]
+        )
+        == 0
+    )
+
+    assert json.loads(output.read_text(encoding="utf-8"))[-2:] == ["parent-session", "continue"]
+
+
 def test_fork_prepares_worktree_and_creates_child_launcher(
     git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
