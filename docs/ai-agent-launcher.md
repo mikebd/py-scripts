@@ -5,8 +5,8 @@ initial built-in adapter is `codex`; its runtime details remain adapter-owned.
 
 ## Install a tagged release
 
-This tool is distributed from Git tags, not PyPI. Install the selected upstream
-release with:
+This tool follows the repository's [Git-tag distribution default](adr/0002-use-git-tag-distribution-until-pypi-is-justified.md),
+not PyPI. Install the selected upstream release with:
 
 ```bash
 uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.0"

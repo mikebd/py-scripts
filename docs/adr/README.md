@@ -59,3 +59,4 @@ replace this repository's ADR conventions.
 | ADR | Status | Decision |
 | --- | --- | --- |
 | [0001](0001-use-static-parser-derived-shell-completion.md) | Accepted | Use static parser-derived shell completion. |
+| [0002](0002-use-git-tag-distribution-until-pypi-is-justified.md) | Accepted | Use Git-tag distribution until PyPI is justified. |
