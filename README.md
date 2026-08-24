@@ -16,6 +16,7 @@ AI guidance is currently provided for [JetBrains Junie](https://www.jetbrains.co
 - [Running scripts](#running-scripts)
 - [Available Scripts](#available-scripts)
 - [Development](#development)
+  - [Architecture Decisions](#architecture-decisions)
 
 ## Requirements
 
@@ -107,6 +108,15 @@ Run it via `uv run codex_fix`. Useful flags:
 Backups of existing binaries are created before replacement, and each install is verified by running the installed binary with `--version` so failures are reported per-IDE in the summary.
 
 ## Development
+
+### Architecture Decisions
+
+Durable repository decisions are recorded as [architecture decision
+records](docs/adr/README.md). ADRs preserve the current rule, rationale,
+alternatives, and consequences without turning routine implementation work
+into permanent architecture policy. Accepted records retain their original
+decision; later clarifications are dated amendments, while material changes
+use a new superseding record.
 
 ### Branch Context
 

@@ -66,6 +66,52 @@ Run `ai-agent-launcher --help` for the current launcher, worktree, and runtime
 commands. Existing legacy Bash launcher artifacts are not imported; create
 new launchers explicitly.
 
+## Shell completion
+
+Generate static completion code for the shell named by `$SHELL`:
+
+```bash
+ai-agent-launcher completion
+```
+
+Select a shell explicitly when saving a generated script or when `$SHELL` does
+not name the current shell:
+
+```bash
+ai-agent-launcher completion --shell zsh
+```
+
+The command supports the shells exposed by its installed Shtab version; run
+`ai-agent-launcher completion --help` for the current list. It writes only to
+standard output; it does not modify shell configuration. Use the explicit form
+for persistent setup. The patterns below cover the currently available shells:
+
+| Shell | Activation pattern |
+| --- | --- |
+| Bash | Use `source <(ai-agent-launcher completion --shell bash)` for the current session. Add that line to `$HOME/.bashrc` for persistent setup. |
+| Fish | Write `ai-agent-launcher completion --shell fish` to `$HOME/.config/fish/completions/ai-agent-launcher.fish`; Fish loads that directory automatically. |
+| Tcsh | Use `ai-agent-launcher completion --shell tcsh \| source /dev/stdin` for the current session. Add that line to `$HOME/.cshrc` for persistent setup. |
+| Zsh | Write `ai-agent-launcher completion --shell zsh` to `$HOME/.zsh/completions/_ai-agent-launcher`, add `$HOME/.zsh/completions` to `fpath` before `compinit`, then run `autoload -Uz compinit && compinit`. |
+
+Create a destination directory before writing a generated file. Zsh completion
+files must retain the underscore-prefixed executable name.
+
+### Zsh with Oh My Zsh
+
+[Oh My Zsh](https://ohmyz.sh/) already adds `$ZSH_CUSTOM/completions` to `fpath`
+before running `compinit`. In an Oh My Zsh shell, install the generated file
+there, remove the existing completion cache, then reload:
+
+```zsh
+mkdir -p "$ZSH_CUSTOM/completions"
+ai-agent-launcher completion --shell zsh > "$ZSH_CUSTOM/completions/_ai-agent-launcher"
+rm -f -- "$ZSH_COMPDUMP"
+omz reload
+```
+
+`$ZSH_CUSTOM` defaults to `$ZSH/custom`. Removing `$ZSH_COMPDUMP` ensures that
+the reloaded completion index includes the newly generated file.
+
 ## Release procedure
 
 For a new release version:

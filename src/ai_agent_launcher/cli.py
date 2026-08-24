@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Protocol
+
+import shtab
 
 from ai_agent_launcher._adapters import RuntimeAgentAdapter
 from ai_agent_launcher._config import load_config
@@ -19,6 +22,7 @@ from ai_agent_launcher._runtime import RunContext, resolve_worktree
 from ai_agent_launcher._worktrees import CreatedWorktree, WorktreeLifecycle
 
 _DISTRIBUTION_NAME = "mikebd-py-scripts"
+_COMPLETION_SHELLS = tuple(sorted(shtab.SUPPORTED_SHELLS))
 
 
 class _SubparserCommands(Protocol):
@@ -50,6 +54,7 @@ def build_parser(registry: AgentRegistry) -> argparse.ArgumentParser:
     _add_run_parser(commands, registry)
     _add_launcher_parser(commands, registry)
     _add_worktree_parser(commands, registry)
+    _add_completion_parser(commands)
     return parser
 
 
@@ -85,8 +90,26 @@ def _dispatch(
         return _launcher(namespace, registry, parser, arguments)
     if namespace.command == "worktree":
         return _worktree(namespace, registry)
+    if namespace.command == "completion":
+        return _completion(namespace, parser)
     parser.print_help()
     return 0
+
+
+def _completion(namespace: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    shell = namespace.shell or _detect_completion_shell(parser)
+    sys.stdout.write(shtab.complete(parser, shell=shell))
+    return 0
+
+
+def _detect_completion_shell(parser: argparse.ArgumentParser) -> str:
+    shell = Path(os.environ.get("SHELL", "")).name
+    if shell not in _COMPLETION_SHELLS:
+        parser.error(
+            "could not detect a supported shell from $SHELL; "
+            f"use completion --shell {{{','.join(_COMPLETION_SHELLS)}}}"
+        )
+    return shell
 
 
 def _run(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
@@ -272,6 +295,11 @@ def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     stack.add_argument("--agent", choices=agent_choices, required=True)
     stack.add_argument("--suffix", required=True)
     _add_worktree_launcher_options(stack)
+
+
+def _add_completion_parser(commands: _SubparserCommands) -> None:
+    completion = commands.add_parser("completion", help="print shell completion code")
+    completion.add_argument("--shell", choices=_COMPLETION_SHELLS)
 
 
 def _add_directories_argument(parser: argparse.ArgumentParser) -> None:
