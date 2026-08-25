@@ -116,8 +116,12 @@ def test_atomic_text_write_removes_temporary_file_after_replace_failure(
 
 
 def test_create_and_pin_preserve_versioned_metadata(
-    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     local_dir = tmp_path / "local"
     local_dir.mkdir()
     launcher = tmp_path / "launcher"
