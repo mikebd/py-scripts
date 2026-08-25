@@ -115,6 +115,33 @@ Run `ai-agent-launcher --help` for the current launcher, worktree, and runtime
 commands. Existing legacy Bash launcher artifacts are not imported; create
 new launchers explicitly.
 
+## Codex-specific behavior
+
+The built-in Codex adapter adds writable directories that are needed by its
+local sandbox and the tools it may run. They are in addition to the generic
+`[core].writable_dirs` and launcher-local `--add-dir` inputs.
+
+| Source | Inclusion condition | Runtime behavior |
+| --- | --- | --- |
+| `[core].writable_dirs` | Each configured path | Must already be an existing directory. |
+| Launcher-local `--add-dir` entries | Each path stored in launcher metadata | Must already be an existing directory. |
+| `<worktree>/.context` | The directory exists | Added when present. |
+| Git directory | The launcher worktree has resolvable Git metadata | Added for the worktree, including linked-worktree Git directories. |
+| Go build cache | `go` is on `PATH` and `go env GOCACHE` is not `off` | The reported cache directory is created when needed. |
+| Go module cache | `go` is on `PATH`; path from `go env GOMODCACHE` | The reported cache directory is created when needed. |
+| GolangCI-Lint cache | `golangci-lint` is on `PATH` | Uses `$GOLANGCI_LINT_CACHE`, then `$XDG_CACHE_HOME/golangci-lint`, then `$HOME/.cache/golangci-lint`; the directory is created when needed. |
+
+Duplicates are removed. Runtime ordering remains adapter-owned: configured
+directories, launcher-local directories, optional `.context`, Git metadata,
+then available tool caches. `ai-agent-launcher launcher describe` presents a
+sorted, best-effort view for diagnosis; it does not create caches, start an
+agent, or run launcher preparation. Unavailable configuration, worktree, Git,
+or tool sources appear as notes beside the stored launcher metadata.
+
+Only the configured and launcher-local inputs are agent-neutral. The automatic
+additions above are current Codex behavior and are not a contract for future
+agent adapters.
+
 ## Shell completion
 
 Generate static completion code for the shell named by `$SHELL`:
