@@ -13,8 +13,8 @@ semantics. Treating those differences as generic core behavior would either
 couple the core to a particular agent or require a lowest-common-denominator
 contract that does not describe real integrations.
 
-The tool needs a boundary that allows additional built-in integrations without
-promising an external extension ABI before one is justified.
+The tool needs a boundary for repository-owned integrations without promising
+an external extension ABI before one is justified.
 
 ## Decision
 

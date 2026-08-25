@@ -1,7 +1,7 @@
 # AI agent launcher
 
 `ai-agent-launcher` creates and runs local AI coding-agent workspaces. The
-initial built-in adapter is `codex`; its runtime details remain adapter-owned.
+current supported adapter is `codex`; its runtime details remain adapter-owned.
 
 Its tool-specific durable choices are recorded in the
 [AI agent launcher decision records](adr/README.md).
@@ -117,7 +117,7 @@ new launchers explicitly.
 
 ## Codex-specific behavior
 
-The built-in Codex adapter adds writable directories that are needed by its
+The Codex adapter adds writable directories that are needed by its
 local sandbox and the tools it may run. They are in addition to the generic
 `[core].writable_dirs` and launcher-local `--add-dir` inputs.
 

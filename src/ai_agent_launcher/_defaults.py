@@ -1,4 +1,4 @@
-"""Built-in adapter registrations."""
+"""Default adapter registrations."""
 
 from ai_agent_launcher._codex import CodexAdapter
 from ai_agent_launcher._registry import AgentRegistry
