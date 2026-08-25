@@ -8,10 +8,12 @@ Its tool-specific durable choices are recorded in the
 Repository-wide completion and distribution policy remains in
 [the repository ADR index](../adr/README.md).
 
-## Install a tagged release
+## Install a tagged release for persistent launchers
 
 This tool follows the repository's [Git-tag distribution default](../adr/0002-use-git-tag-distribution-until-pypi-is-justified.md),
-not PyPI. Install the selected upstream release with:
+not PyPI. A generated launcher is a persistent shell shim: direct execution
+requires `ai-agent-launcher` to be available on that process's `PATH`. Install
+the selected upstream release with:
 
 ```bash
 uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.0"
@@ -23,8 +25,10 @@ For a fork, replace the repository URL and keep the selected tag:
 uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.0"
 ```
 
-Ensure the UV tool binary directory is on `PATH` with `uv tool update-shell`,
-or inspect it with `uv tool dir --bin`. Verify the installed executable with:
+Ensure the UV tool binary directory is on `PATH`. You may run
+`uv tool update-shell` to update shell startup configuration, or inspect the
+directory with `uv tool dir --bin` and add it through your own shell setup.
+Verify the installed executable with:
 
 ```bash
 ai-agent-launcher --version
@@ -34,17 +38,24 @@ ai-agent-launcher --help
 To move to a selected newer tag, rerun `uv tool install --reinstall` with that
 tag. This replaces the installed tool with the requested source version.
 
-## Test an untagged checkout
+## Direct CLI smoke test from an untagged checkout
 
-For a fast smoke test of the current checkout, run:
+Use `uv run` for direct, one-shot commands from the current checkout:
 
 ```bash
 uv run ai-agent-launcher --version
 uv run ai-agent-launcher --help
 ```
 
-To also test an isolated tool installation without creating a Git tag or
-replacing the normal installed launcher, use temporary UV directories:
+Running `uv run ai-agent-launcher launcher create ...` does not install the
+command into the later generated launcher's `PATH`. Use the temporary
+installation below to test persistent-launcher behavior without replacing the
+normal installed tool.
+
+## Temporarily install an untagged checkout
+
+To test an installation candidate without creating a Git tag or replacing the
+normal installed launcher, use isolated UV directories:
 
 ```bash
 test_root="$(mktemp -d)"
@@ -52,13 +63,16 @@ UV_TOOL_DIR="$test_root/tools" \
 UV_TOOL_BIN_DIR="$test_root/bin" \
 UV_CACHE_DIR="$test_root/cache" \
 uv tool install --no-cache .
-"$test_root/bin/ai-agent-launcher" --version
-"$test_root/bin/ai-agent-launcher" --help
+export PATH="$test_root/bin:$PATH"
+ai-agent-launcher --version
+ai-agent-launcher --help
 ```
 
-Remove the temporary directory when finished. `make release-check` performs
-this installation check automatically from a temporary Git-tagged snapshot of
-the current source.
+Keep the temporary directory and its `PATH` entry for any generated-launcher
+smoke test. Remove the directory after restoring `PATH`. `make release-check`
+performs the corresponding temporary Git-tagged installation plus `--version`
+and `--help` checks automatically; it does not create or execute a generated
+launcher.
 
 ## Configuration
 
