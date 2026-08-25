@@ -10,9 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from ai_agent_launcher import _codex
+from ai_agent_launcher import _codex, _launchers
 from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._launchers import (
+    atomic_text_write,
     launcher_git_metadata_access,
     read_launcher,
     read_launcher_artifact,
@@ -95,6 +96,23 @@ def _config(path: Path, executable: Path, home: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def test_atomic_text_write_removes_temporary_file_after_replace_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "launcher"
+
+    def fail_replace(_source: object, _destination: object) -> None:
+        raise OSError("forced replacement failure")
+
+    monkeypatch.setattr(_launchers.os, "replace", fail_replace)
+
+    with pytest.raises(LauncherError, match="unable to write"):
+        atomic_text_write(target, "#!/bin/sh\n", 0o700)
+
+    assert not target.exists()
+    assert list(tmp_path.glob(".launcher.*")) == []
 
 
 def test_create_and_pin_preserve_versioned_metadata(

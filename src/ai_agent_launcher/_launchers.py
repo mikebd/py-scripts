@@ -7,6 +7,7 @@ import json
 import os
 import stat
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
@@ -435,15 +436,19 @@ def _copy_extensions(extensions: MetadataExtensions | None) -> MetadataExtension
 
 
 def _atomic_write(path: Path, content: str, mode: int) -> None:
+    temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
             "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
         ) as temporary:
-            temporary.write(content)
             temporary_path = Path(temporary.name)
+            temporary.write(content)
         temporary_path.chmod(mode)
         os.replace(temporary_path, path)
     except OSError as error:
+        if temporary_path is not None:
+            with suppress(OSError):
+                temporary_path.unlink(missing_ok=True)
         raise LauncherError(f"unable to write {path}: {error}") from error
 
 
