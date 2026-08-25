@@ -121,10 +121,23 @@ def test_strict_stack_help_omits_target_overrides(capsys: pytest.CaptureFixture[
     assert "--from" not in help_text
 
 
-def test_suffix_normalization_preserves_agent_passthrough() -> None:
+def test_suffix_normalization_leaves_non_worktree_passthrough_unchanged() -> None:
     arguments = ["run", "--agent", "codex", "--", "--suffix", "-child"]
 
     assert _normalize_worktree_suffix(arguments) == arguments
+
+
+def test_suffix_normalization_stops_at_separator() -> None:
+    arguments = ["worktree", "stack", "--suffix", "-child", "--", "--suffix", "-inner"]
+
+    assert _normalize_worktree_suffix(arguments) == [
+        "worktree",
+        "stack",
+        "--suffix=-child",
+        "--",
+        "--suffix",
+        "-inner",
+    ]
 
 
 def test_help_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None:

@@ -617,6 +617,32 @@ def test_effective_directory_resolution_does_not_create_go_caches(
     assert go_module_cache.exists() is False
 
 
+def test_writable_directory_resolution_skips_disabled_go_caches(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter = _codex.CodexAdapter()
+
+    def which(command: str) -> str | None:
+        return "/test/go" if command == "go" else None
+
+    def go_environment(
+        _self: _codex.CodexAdapter,
+        _executable: str,
+        _variable: str,
+        _worktree: Path,
+    ) -> str:
+        return "off"
+
+    monkeypatch.setattr(_codex.shutil, "which", which)
+    monkeypatch.setattr(_codex.CodexAdapter, "_go_environment", go_environment)
+    context = RunContext(git_worktree, (), (), ())
+
+    report = adapter.resolve_writable_dirs(context, {})
+
+    assert report.notes == ()
+    assert adapter._writable_dirs(context) == report.directories
+
+
 def test_describe_rejects_unsupported_metadata_version(
     git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

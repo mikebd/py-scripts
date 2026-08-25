@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ai_agent_launcher import _lifecycle
 from ai_agent_launcher._launchers import launcher_git_metadata_access, read_launcher
 from ai_agent_launcher._models import GitMetadataAccess
 from ai_agent_launcher.cli import main
@@ -453,3 +454,43 @@ def test_new_rolls_back_owned_resources_and_preserves_external_launcher(
     assert not render_target.exists()
     assert _git(primary_worktree, "branch", "--list", "feature/failed-render") == ""
     assert external_launcher.is_file()
+
+
+def test_new_rolls_back_owned_resources_after_unexpected_launcher_failure(
+    primary_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    launcher_directory = tmp_path / "launchers"
+    config = tmp_path / "config.toml"
+    _config(config, launcher_directory)
+    monkeypatch.chdir(primary_worktree)
+
+    def fail_prepare(
+        _self: _lifecycle.LauncherLifecycle,
+        _worktree_dir: Path,
+        _preparation_path: Path | None,
+    ) -> None:
+        raise RuntimeError("unexpected launcher preparation failure")
+
+    monkeypatch.setattr(_lifecycle.LauncherLifecycle, "prepare", fail_prepare)
+    target = tmp_path / "unexpected-failure"
+
+    with pytest.raises(RuntimeError, match="unexpected launcher preparation failure"):
+        main(
+            [
+                "--config",
+                str(config),
+                "worktree",
+                "new",
+                "--agent",
+                "codex",
+                "--worktree-dir",
+                str(target),
+                "--branch",
+                "feature/unexpected-failure",
+                "--marker",
+                "# generated launcher",
+            ]
+        )
+
+    assert not target.exists()
+    assert _git(primary_worktree, "branch", "--list", "feature/unexpected-failure") == ""

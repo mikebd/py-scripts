@@ -308,7 +308,8 @@ class CodexAdapter:
             if go_cache != "off":
                 _append_unique(directories, _create_directory(go_cache, "Go build cache"))
             go_module_cache = self._go_environment(go, "GOMODCACHE", worktree_dir)
-            _append_unique(directories, _create_directory(go_module_cache, "Go module cache"))
+            if go_module_cache != "off":
+                _append_unique(directories, _create_directory(go_module_cache, "Go module cache"))
         if shutil.which("golangci-lint") is not None:
             cache_root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
             golangci_cache = os.environ.get("GOLANGCI_LINT_CACHE") or str(

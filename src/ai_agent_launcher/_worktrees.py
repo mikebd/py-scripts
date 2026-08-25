@@ -139,7 +139,7 @@ class WorktreeLifecycle:
                 local_writable_dirs,
                 git_metadata_access,
             )
-        except LauncherError:
+        except Exception:
             if created:
                 self._rollback(source, target, branch)
             raise
