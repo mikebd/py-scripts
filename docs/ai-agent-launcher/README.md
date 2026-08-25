@@ -3,9 +3,14 @@
 `ai-agent-launcher` creates and runs local AI coding-agent workspaces. The
 initial built-in adapter is `codex`; its runtime details remain adapter-owned.
 
+Its tool-specific durable choices are recorded in the
+[AI agent launcher decision records](adr/README.md).
+Repository-wide completion and distribution policy remains in
+[the repository ADR index](../adr/README.md).
+
 ## Install a tagged release
 
-This tool follows the repository's [Git-tag distribution default](adr/0002-use-git-tag-distribution-until-pypi-is-justified.md),
+This tool follows the repository's [Git-tag distribution default](../adr/0002-use-git-tag-distribution-until-pypi-is-justified.md),
 not PyPI. Install the selected upstream release with:
 
 ```bash

@@ -5,6 +5,14 @@ decisions and their rationale. They make future changes reviewable without
 recovering the original planning conversation. This repository uses the
 [Architecture Decision Records](https://adr.github.io/) approach.
 
+## Scope
+
+Records in this directory establish reusable repository-wide policy. A durable
+decision that applies only to one tool belongs in that tool's scoped
+decision-record area and does not appear in this index. When a decision grows
+to affect multiple independent tools, record the repository-wide policy here
+and maintain reciprocal links to any materially related scoped records.
+
 ## Lifecycle
 
 Each ADR begins with one of these statuses:

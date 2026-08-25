@@ -12,10 +12,12 @@ takes effect immediately; do not wait for a restart or manual reminder.
 ## Architecture decisions
 
 Before changing a durable public CLI contract, completion policy, adapter/core
-boundary, configuration model, or distribution policy, read
-`docs/adr/README.md` and the relevant ADRs. Add the next sequential ADR when
-a change establishes, reverses, or materially changes such a decision; do not
-create ADRs for routine implementation details or temporary tracking.
+boundary, configuration model, or distribution policy, read the applicable
+decision-record guide and relevant records. `docs/adr/` governs reusable
+repository-wide policy; a tool-local decision-record area governs decisions
+that apply only to that tool. Add a record at the matching scope when a change
+establishes, reverses, or materially changes such a decision; do not create
+records for routine implementation details or temporary tracking.
 
 ## Validation
 
