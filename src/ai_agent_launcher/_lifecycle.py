@@ -13,6 +13,7 @@ from ai_agent_launcher._launchers import (
     LauncherMetadata,
     build_metadata,
     launcher_mode,
+    preflight_launcher_target,
     read_launcher,
     replace_session,
     with_local_directories,
@@ -108,6 +109,7 @@ class LauncherLifecycle:
         metadata = self._source(launcher, expected_agent)
         if metadata.session is None:
             raise LauncherError("source launcher has no pinned session")
+        preflight_launcher_target(target_launcher)
         adapter = self._lifecycle_adapter(metadata.agent_id)
         self._run_preparation(metadata)
         session = adapter.fork_session(

@@ -163,15 +163,7 @@ def write_launcher(
     mode: int = 0o700,
 ) -> Path:
     """Atomically render a POSIX-shell launcher and return its canonical path."""
-    path = Path(path_argument).expanduser()
-    if path.exists() and not replace:
-        raise LauncherError(f"launcher path already exists: {path}")
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
-        raise LauncherError(
-            f"unable to create launcher directory {path.parent}: {error}"
-        ) from error
+    path = _prepare_launcher_target(path_argument, replace=replace)
     encoded = _encode_metadata(metadata)
     content = "\n".join(
         (
@@ -186,6 +178,18 @@ def write_launcher(
     )
     _atomic_write(path, content, mode)
     return path.resolve()
+
+
+def preflight_launcher_target(path_argument: str | Path) -> None:
+    """Reject an unavailable new target before an irreversible lifecycle operation."""
+    path = _prepare_launcher_target(path_argument, replace=False)
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}."
+        ) as temporary:
+            Path(temporary.name).chmod(0o700)
+    except OSError as error:
+        raise LauncherError(f"unable to write {path}: {error}") from error
 
 
 def replace_session(metadata: LauncherMetadata, session_id: str) -> LauncherMetadata:
@@ -355,3 +359,17 @@ def _atomic_write(path: Path, content: str, mode: int) -> None:
         os.replace(temporary_path, path)
     except OSError as error:
         raise LauncherError(f"unable to write {path}: {error}") from error
+
+
+def _prepare_launcher_target(path_argument: str | Path, *, replace: bool) -> Path:
+    """Validate target occupancy and ensure its parent directory exists."""
+    path = Path(path_argument).expanduser()
+    if path.exists() and not replace:
+        raise LauncherError(f"launcher path already exists: {path}")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise LauncherError(
+            f"unable to create launcher directory {path.parent}: {error}"
+        ) from error
+    return path

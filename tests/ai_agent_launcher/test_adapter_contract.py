@@ -164,6 +164,54 @@ def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) ->
     assert target_metadata.local_writable_dirs == (inherited.resolve(), added.resolve())
 
 
+def test_launcher_lifecycle_rejects_existing_fork_target_before_preparation_or_fork(
+    tmp_path: Path,
+) -> None:
+    worktree = _git_worktree(tmp_path)
+    source = tmp_path / "source-launcher"
+    target = tmp_path / "target-launcher"
+    preparation = tmp_path / "prepare"
+    preparation.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    preparation.chmod(0o755)
+    target.write_text("existing launcher", encoding="utf-8")
+    adapter = FakeSessionLifecycleAdapter(
+        forked_session=SessionReference(AgentId("fake"), "child-session")
+    )
+    lifecycle, _ = _lifecycle(adapter)
+    lifecycle.create(
+        adapter.identifier,
+        source,
+        worktree,
+        "# generated launcher",
+        preparation,
+        (),
+    )
+    lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
+
+    with pytest.raises(LauncherError, match="launcher path already exists"):
+        lifecycle.fork(source, target, adapter.identifier, (), ())
+
+    assert adapter.observed_fork is None
+
+
+def test_launcher_lifecycle_rejects_unusable_fork_target_before_fork(tmp_path: Path) -> None:
+    worktree = _git_worktree(tmp_path)
+    source = tmp_path / "source-launcher"
+    target_parent = tmp_path / "not-a-directory"
+    target_parent.write_text("not a directory", encoding="utf-8")
+    adapter = FakeSessionLifecycleAdapter(
+        forked_session=SessionReference(AgentId("fake"), "child-session")
+    )
+    lifecycle, _ = _lifecycle(adapter)
+    lifecycle.create(adapter.identifier, source, worktree, "# generated launcher", None, ())
+    lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
+
+    with pytest.raises(LauncherError, match="unable to create launcher directory"):
+        lifecycle.fork(source, target_parent / "target-launcher", adapter.identifier, (), ())
+
+    assert adapter.observed_fork is None
+
+
 def test_launcher_lifecycle_delegates_adopt_and_rejects_other_worktrees(tmp_path: Path) -> None:
     worktree = _git_worktree(tmp_path)
     other_worktree = _git_worktree(tmp_path, "other-worktree")
