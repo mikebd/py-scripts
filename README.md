@@ -16,6 +16,7 @@ AI guidance is currently provided for [JetBrains Junie](https://www.jetbrains.co
 - [Running scripts](#running-scripts)
 - [Available Scripts](#available-scripts)
 - [Development](#development)
+  - [Architecture Decisions](#architecture-decisions)
 
 ## Requirements
 
@@ -39,6 +40,13 @@ alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
 ```
 
 ## Available Scripts
+
+### AI Agent Launcher (`ai-agent-launcher`)
+
+Creates and runs local AI coding-agent workspaces through an agent-neutral
+core. The current supported adapter is `codex`. See the
+[AI agent launcher guide](docs/ai-agent-launcher/README.md) for tagged installation,
+configuration, and release guidance.
 
 ### Brew Diff (`brew_diff <remote_host>`)
 
@@ -101,6 +109,15 @@ Backups of existing binaries are created before replacement, and each install is
 
 ## Development
 
+### Architecture Decisions
+
+Durable repository decisions are recorded as [architecture decision
+records](docs/adr/README.md). ADRs preserve the current rule, rationale,
+alternatives, and consequences without turning routine implementation work
+into permanent architecture policy. Accepted records retain their original
+decision; later clarifications are dated amendments, while material changes
+use a new superseding record.
+
 ### Branch Context
 
 This repository's optional Branch Context is maintained on the [`py-scripts-context` branch](https://github.com/mikebd/public-branch-context/tree/py-scripts-context) of the public Branch Context repository. It provides branch-scoped working context for coding-agent workflows, including resumability, decision traceability, handoffs, and reproducible investigations.
@@ -129,4 +146,6 @@ within the project environment.
 | `make fix`           | Automatically fix linting issues              |
 | `make format`        | Format code with `ruff`                       |
 | `make fmt`           | Fix, format, and run all checks (convenience) |
+| `make build`         | Build source and wheel distributions          |
+| `make release-check` | Validate a clean Git-tagged tool installation |
 | `make all`           | Run all non-mutating checks                   |

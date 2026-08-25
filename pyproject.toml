@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,16 +9,20 @@ description = "A collection of Python scripts"
 authors = [
     { name = "Michael Ben-David" },
 ]
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.13"
+dependencies = [
+    "shtab>=1.11.0",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 
 [project.scripts]
+ai-agent-launcher = "ai_agent_launcher.cli:main"
 brew_diff = "brew.diff:diff"
 bu = "brew.update:update"
 codex_fix = "jetbrains.codex_fix:main"
