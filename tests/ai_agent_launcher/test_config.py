@@ -21,6 +21,12 @@ def test_missing_default_configuration_uses_empty_values(
     assert config.agent_settings == {}
 
 
+def test_empty_xdg_config_home_uses_conventional_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", "")
+
+    assert default_config_path() == Path.home() / ".config" / "ai-agent-launcher" / "config.toml"
+
+
 def test_configuration_parses_core_and_selected_agent(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(

@@ -92,7 +92,11 @@ def _snapshot(root: Path, destination: Path, environment: dict[str, str], versio
     )
     _run(["git", "config", "user.name", "Release Check"], cwd=destination, environment=environment)
     _run(["git", "add", "--all"], cwd=destination, environment=environment)
-    _run(["git", "commit", "-qm", "release snapshot"], cwd=destination, environment=environment)
+    _run(
+        ["git", "-c", "commit.gpgSign=false", "commit", "-qm", "release snapshot"],
+        cwd=destination,
+        environment=environment,
+    )
     _run(["git", "tag", f"release-smoke-v{version}"], cwd=destination, environment=environment)
 
 
