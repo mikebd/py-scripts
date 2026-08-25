@@ -8,8 +8,6 @@ That repo is the lighter-weight Bash companion to this one and can act as a stag
 Currently tested only on Linux ([Pop!_OS](https://system76.com/pop/) 22.04).  `brew` commands currently assume formulas
 only, cask support for `macOS` may be added in the future.
 
-AI guidance is currently provided for [JetBrains Junie](https://www.jetbrains.com/junie/) only.
-
 ## Table of Contents
 
 - [Requirements](#requirements)
