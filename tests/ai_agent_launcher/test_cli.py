@@ -104,6 +104,13 @@ def test_worktree_help_lists_new_and_stack(capsys: pytest.CaptureFixture[str]) -
     assert "stack" in help_text
 
 
+def test_worktree_requires_a_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="2"):
+        main(["worktree"])
+
+    assert "worktree_command" in capsys.readouterr().err
+
+
 def test_launcher_help_lists_describe(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["launcher", "--help"])

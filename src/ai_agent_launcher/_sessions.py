@@ -52,7 +52,7 @@ def _read_session_metadata(source_file: Path) -> CodexSessionMetadata | None:
         with source_file.open(encoding="utf-8") as session_file:
             first_line = session_file.readline()
         document = _object_mapping(json.loads(first_line))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     if document is None:
         return None

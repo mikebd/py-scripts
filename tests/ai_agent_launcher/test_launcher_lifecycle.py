@@ -14,11 +14,14 @@ from ai_agent_launcher import _codex, _launchers
 from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._launchers import (
     atomic_text_write,
+    build_metadata,
     launcher_git_metadata_access,
     read_launcher,
     read_launcher_artifact,
+    replace_session,
+    write_launcher,
 )
-from ai_agent_launcher._models import GitMetadataAccess
+from ai_agent_launcher._models import AgentId, GitMetadataAccess
 from ai_agent_launcher._runtime import RunContext
 from ai_agent_launcher.cli import main
 
@@ -113,6 +116,48 @@ def test_atomic_text_write_removes_temporary_file_after_replace_failure(
 
     assert not target.exists()
     assert list(tmp_path.glob(".launcher.*")) == []
+
+
+def test_atomic_text_write_removes_temporary_file_after_encoding_failure(tmp_path: Path) -> None:
+    target = tmp_path / "launcher"
+
+    with pytest.raises(LauncherError, match="unable to write"):
+        atomic_text_write(target, "\ud800", 0o700)
+
+    assert not target.exists()
+    assert list(tmp_path.glob(".launcher.*")) == []
+
+
+def test_launcher_run_and_fork_report_unknown_adapter(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    source = tmp_path / "source-launcher"
+    target = tmp_path / "target-launcher"
+    metadata = build_metadata(AgentId("other"), git_worktree, "# generated launcher", None, ())
+    write_launcher(source, replace_session(metadata, "parent-session"))
+
+    assert main(["launcher", "run", "--launcher", str(source)]) == 2
+    assert "unknown agent identifier other" in capsys.readouterr().err
+
+    assert (
+        main(
+            [
+                "launcher",
+                "fork",
+                "--launcher",
+                str(source),
+                "--target-launcher",
+                str(target),
+            ]
+        )
+        == 2
+    )
+    assert "unknown agent identifier other" in capsys.readouterr().err
+    assert not target.exists()
 
 
 def test_create_and_pin_preserve_versioned_metadata(

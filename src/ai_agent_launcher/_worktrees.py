@@ -25,7 +25,7 @@ class CreatedWorktree:
 
 
 class WorktreeLifecycle:
-    """Create Git worktrees before delegating launcher rendering to WP-003."""
+    """Create Git worktrees and their unpinned generated launchers."""
 
     def __init__(self, config: LauncherConfig, launchers: LauncherLifecycle) -> None:
         self._config = config
@@ -139,7 +139,7 @@ class WorktreeLifecycle:
                 local_writable_dirs,
                 git_metadata_access,
             )
-        except Exception:
+        except BaseException:
             if created:
                 self._rollback(source, target, branch)
             raise

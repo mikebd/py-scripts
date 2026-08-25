@@ -445,7 +445,7 @@ def _atomic_write(path: Path, content: str, mode: int) -> None:
             temporary.write(content)
         temporary_path.chmod(mode)
         os.replace(temporary_path, path)
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
         if temporary_path is not None:
             with suppress(OSError):
                 temporary_path.unlink(missing_ok=True)

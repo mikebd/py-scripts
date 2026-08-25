@@ -54,6 +54,15 @@ model = "test-model"
     assert config.agent_settings[AgentId("codex")] == {"model": "test-model"}
 
 
+@pytest.mark.parametrize("configured_home", ("relative-config", "~unknown-user/config"))
+def test_invalid_xdg_config_home_uses_conventional_default(
+    monkeypatch: pytest.MonkeyPatch, configured_home: str
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", configured_home)
+
+    assert default_config_path() == Path.home() / ".config" / "ai-agent-launcher" / "config.toml"
+
+
 @pytest.mark.parametrize(
     ("contents", "message"),
     [

@@ -175,8 +175,7 @@ def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) ->
         GitMetadataAccess.WORKTREE,
     ) == SessionReference(adapter.identifier, "child-session")
     assert (
-        launcher_git_metadata_access(read_launcher(override_target))
-        is GitMetadataAccess.WORKTREE
+        launcher_git_metadata_access(read_launcher(override_target)) is GitMetadataAccess.WORKTREE
     )
 
 

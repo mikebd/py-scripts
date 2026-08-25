@@ -72,8 +72,35 @@ def _source_paths(root: Path, environment: dict[str, str]) -> tuple[Path, ...]:
     return tuple(paths)
 
 
+def _is_within(path: Path, directory: Path) -> bool:
+    try:
+        path.relative_to(directory)
+    except ValueError:
+        return False
+    return True
+
+
+def _snapshot_symlink_target(root: Path, destination: Path, source: Path, target: Path) -> str:
+    link_target = os.readlink(source)
+    if Path(link_target).is_absolute():
+        raise RuntimeError(f"release snapshot rejects absolute symlink target: {source}")
+
+    try:
+        resolved_source = source.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise RuntimeError(f"release snapshot rejects dangling symlink: {source}") from error
+    if not _is_within(resolved_source, root.resolve()):
+        raise RuntimeError(f"release snapshot rejects symlink target outside source root: {source}")
+
+    resolved_target = (target.parent / link_target).resolve()
+    if not _is_within(resolved_target, destination.resolve()):
+        raise RuntimeError(f"release snapshot rejects symlink target outside snapshot: {source}")
+    return link_target
+
+
 def _snapshot(root: Path, destination: Path, environment: dict[str, str], version: str) -> None:
     destination.mkdir()
+    symlinks: list[tuple[Path, Path, str]] = []
     for relative_path in _source_paths(root, environment):
         source = root / relative_path
         if not source.exists() and not source.is_symlink():
@@ -81,9 +108,18 @@ def _snapshot(root: Path, destination: Path, environment: dict[str, str], versio
         target = destination / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_symlink():
-            target.symlink_to(os.readlink(source))
+            symlinks.append(
+                (source, target, _snapshot_symlink_target(root, destination, source, target))
+            )
         else:
             shutil.copy2(source, target)
+    for _, target, link_target in symlinks:
+        target.symlink_to(link_target)
+    for source, target, _ in symlinks:
+        try:
+            target.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise RuntimeError(f"release snapshot contains dangling symlink: {source}") from error
     _run(["git", "init", "-q"], cwd=destination, environment=environment)
     _run(
         ["git", "config", "user.email", "release-check@example.invalid"],

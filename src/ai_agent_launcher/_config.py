@@ -31,7 +31,12 @@ class LauncherConfig:
 def default_config_path() -> Path:
     """Return the conventional XDG configuration location."""
     configured_home = os.environ.get("XDG_CONFIG_HOME")
-    config_home = Path(configured_home).expanduser() if configured_home else Path.home() / ".config"
+    configured_path = Path(configured_home) if configured_home else None
+    config_home = (
+        configured_path
+        if configured_path and configured_path.is_absolute()
+        else Path.home() / ".config"
+    )
     return config_home / "ai-agent-launcher" / "config.toml"
 
 

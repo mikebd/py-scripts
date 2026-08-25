@@ -22,7 +22,7 @@ from ai_agent_launcher._launchers import (
 )
 from ai_agent_launcher._lifecycle import LauncherLifecycle
 from ai_agent_launcher._models import AgentId, GitMetadataAccess
-from ai_agent_launcher._registry import AgentRegistry
+from ai_agent_launcher._registry import AgentRegistry, UnknownAgentError
 from ai_agent_launcher._runtime import RunContext, resolve_worktree
 from ai_agent_launcher._worktrees import CreatedWorktree, WorktreeLifecycle
 
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         return _dispatch(namespace, registry, parser, arguments)
-    except LauncherError as error:
+    except (LauncherError, UnknownAgentError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
 
@@ -343,7 +343,7 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
 
 def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
     worktree_parser = commands.add_parser("worktree", help="create Git worktrees and launchers")
-    worktree_commands = worktree_parser.add_subparsers(dest="worktree_command")
+    worktree_commands = worktree_parser.add_subparsers(dest="worktree_command", required=True)
     agent_choices = [str(value) for value in registry.identifiers]
 
     new = worktree_commands.add_parser(

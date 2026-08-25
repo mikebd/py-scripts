@@ -36,6 +36,20 @@ def test_session_catalog_ignores_malformed_and_unrelated_records(tmp_path: Path)
     assert CodexSessionCatalog(tmp_path).records() == ()
 
 
+def test_session_catalog_ignores_invalid_utf8_and_keeps_valid_records(tmp_path: Path) -> None:
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "invalid.jsonl").write_bytes(b"\xff\xfe\n")
+    (sessions / "valid.jsonl").write_text(
+        '{"type":"session_meta","payload":{"id":"valid","cwd":"/tmp/worktree"}}\n',
+        encoding="utf-8",
+    )
+
+    records = CodexSessionCatalog(tmp_path).records()
+
+    assert [record.identifier for record in records] == ["valid"]
+
+
 def test_session_catalog_rejects_ambiguous_identifier(tmp_path: Path) -> None:
     sessions = tmp_path / "sessions"
     sessions.mkdir()

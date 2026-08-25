@@ -494,3 +494,43 @@ def test_new_rolls_back_owned_resources_after_unexpected_launcher_failure(
 
     assert not target.exists()
     assert _git(primary_worktree, "branch", "--list", "feature/unexpected-failure") == ""
+
+
+def test_new_rolls_back_owned_resources_after_interruption(
+    primary_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    launcher_directory = tmp_path / "launchers"
+    config = tmp_path / "config.toml"
+    _config(config, launcher_directory)
+    monkeypatch.chdir(primary_worktree)
+
+    def interrupt_prepare(
+        _self: _lifecycle.LauncherLifecycle,
+        _worktree_dir: Path,
+        _preparation_path: Path | None,
+    ) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_lifecycle.LauncherLifecycle, "prepare", interrupt_prepare)
+    target = tmp_path / "interrupted"
+
+    with pytest.raises(KeyboardInterrupt):
+        main(
+            [
+                "--config",
+                str(config),
+                "worktree",
+                "new",
+                "--agent",
+                "codex",
+                "--worktree-dir",
+                str(target),
+                "--branch",
+                "feature/interrupted",
+                "--marker",
+                "# generated launcher",
+            ]
+        )
+
+    assert not target.exists()
+    assert _git(primary_worktree, "branch", "--list", "feature/interrupted") == ""
