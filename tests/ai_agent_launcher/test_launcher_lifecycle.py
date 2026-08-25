@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -9,7 +11,9 @@ from pathlib import Path
 import pytest
 
 from ai_agent_launcher import _codex
+from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._launchers import read_launcher
+from ai_agent_launcher._runtime import RunContext
 from ai_agent_launcher.cli import main
 
 
@@ -115,10 +119,16 @@ def test_create_and_pin_preserve_versioned_metadata(
         == 0
     )
     assert launcher.stat().st_mode & 0o777 == 0o700
-    assert 'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"' in launcher.read_text(
-        encoding="utf-8"
+    content = launcher.read_text(encoding="utf-8")
+    assert 'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"' in content
+    assert (
+        "# Inspect metadata with: ai-agent-launcher launcher describe "
+        "--launcher <launcher-path>" in content
     )
     assert read_launcher(launcher).session is None
+
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
+    assert "session: unpinned" in capsys.readouterr().out
 
     assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "one"]) == 0
     assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "one"]) == 0
@@ -141,6 +151,338 @@ def test_create_and_pin_preserve_versioned_metadata(
     pinned = read_launcher(launcher).session
     assert pinned is not None
     assert pinned.value == "two"
+
+
+def test_describe_reports_effective_dirs_and_degrades(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    launcher = tmp_path / "launcher"
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    configured_dir = tmp_path / "configured"
+    configured_dir.mkdir()
+    (git_worktree / ".context").mkdir()
+    preparation = tmp_path / "prepare"
+    prepared = tmp_path / "prepared"
+    preparation.write_text(f'#!/bin/sh\nprintf prepared > "{prepared}"\n', encoding="utf-8")
+    preparation.chmod(0o755)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        "\n".join(
+            (
+                "[core]",
+                f"writable_dirs = [{json.dumps(str(configured_dir))}]",
+            )
+        ),
+        encoding="utf-8",
+    )
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+                "--prepare",
+                str(preparation),
+                "--add-dir",
+                str(local_dir),
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "pin",
+                "--launcher",
+                str(launcher),
+                "--session-id",
+                "parent-session",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "describe",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    assert prepared.exists() is False
+    assert capsys.readouterr().out == "\n".join(
+        (
+            f"launcher: {launcher}",
+            "format version: 1",
+            "agent: codex",
+            f"worktree: {git_worktree.resolve()}",
+            "session: parent-session",
+            "marker: # launcher marker",
+            f"preparation: {preparation.resolve()}",
+            "local writable directories:",
+            f"  - {local_dir.resolve()}",
+            "effective writable directories:",
+            f"  - {configured_dir.resolve()}",
+            f"  - {local_dir.resolve()}",
+            f"  - {(git_worktree / '.context').resolve()}",
+            f"  - {(git_worktree / '.git').resolve()}",
+            "",
+        )
+    )
+
+    preparation.unlink()
+    local_dir.rmdir()
+    configured_dir.rmdir()
+    shutil.rmtree(git_worktree)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "describe",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert f"worktree: {git_worktree.resolve()}" in output
+    assert "effective writable directories: none" in output
+    assert "configured writable directory is not an existing directory" in output
+    assert "--add-dir is not an existing directory" in output
+    with pytest.raises(LauncherError, match="launcher metadata is invalid"):
+        read_launcher(launcher)
+
+
+def test_describe_degrades_when_configuration_is_unavailable(
+    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = tmp_path / "launcher"
+    missing_config = tmp_path / "missing-config.toml"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        main(
+            [
+                "--config",
+                str(missing_config),
+                "launcher",
+                "describe",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "effective writable directories: none" in output
+    assert "configuration file does not exist" in output
+
+
+def test_describe_sorts_local_and_effective_writable_directories(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    launcher = tmp_path / "launcher"
+    configured_a = tmp_path / "configured-a"
+    configured_z = tmp_path / "configured-z"
+    local_a = tmp_path / "local-a"
+    local_z = tmp_path / "local-z"
+    for directory in (configured_a, configured_z, local_a, local_z):
+        directory.mkdir()
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        "\n".join(
+            (
+                "[core]",
+                "writable_dirs = ["
+                f"{json.dumps(str(configured_z))}, {json.dumps(str(configured_a))}]",
+            )
+        ),
+        encoding="utf-8",
+    )
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+                "--add-dir",
+                str(local_z),
+                "--add-dir",
+                str(local_a),
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "describe",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    lines = capsys.readouterr().out.splitlines()
+    local_start = lines.index("local writable directories:") + 1
+    effective_start = lines.index("effective writable directories:")
+    assert lines[local_start:effective_start] == [
+        f"  - {local_a.resolve()}",
+        f"  - {local_z.resolve()}",
+    ]
+    assert lines[effective_start + 1 :] == sorted(lines[effective_start + 1 :])
+
+
+def test_effective_directory_resolution_does_not_create_go_caches(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    go_cache = tmp_path / "go-cache"
+    go_module_cache = tmp_path / "go-module-cache"
+    adapter = _codex.CodexAdapter()
+
+    def which(command: str) -> str | None:
+        return "/test/go" if command == "go" else None
+
+    def go_environment(
+        _self: _codex.CodexAdapter,
+        _executable: str,
+        variable: str,
+        _worktree: Path,
+    ) -> str:
+        return str(go_cache if variable == "GOCACHE" else go_module_cache)
+
+    monkeypatch.setattr(_codex.shutil, "which", which)
+    monkeypatch.setattr(_codex.CodexAdapter, "_go_environment", go_environment)
+
+    report = adapter.resolve_writable_dirs(
+        RunContext(git_worktree, (), (), ()),
+        {},
+    )
+
+    assert go_cache in report.directories
+    assert go_module_cache in report.directories
+    assert go_cache.exists() is False
+    assert go_module_cache.exists() is False
+
+
+def test_describe_rejects_unsupported_metadata_version(
+    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    lines = launcher.read_text(encoding="utf-8").splitlines()
+    metadata_index = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    encoded = lines[metadata_index].removeprefix("# ai-agent-launcher-metadata-v1: ")
+    payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    payload["format_version"] = 2
+    replacement = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    lines[metadata_index] = f"# ai-agent-launcher-metadata-v1: {replacement}"
+    launcher.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unsupported launcher metadata version" in captured.err
+
+
+def test_describe_rejects_non_generated_launcher(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = tmp_path / "launcher"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "not a supported generated launcher" in captured.err
 
 
 def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Path) -> None:

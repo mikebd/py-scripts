@@ -201,6 +201,7 @@ def test_main_respects_include_filter(tmp_path: Path, monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(codex_fix, "_download", fake_download)
     monkeypatch.setattr(codex_fix, "_safe_extract_tar_gz", fake_safe_extract)
+
     def fake_run_version(_binary: Path) -> str:
         return "codex fake"
 

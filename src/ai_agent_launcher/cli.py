@@ -11,10 +11,11 @@ from typing import Protocol
 
 import shtab
 
-from ai_agent_launcher._adapters import RuntimeAgentAdapter
+from ai_agent_launcher._adapters import RuntimeAgentAdapter, WritableDirectoryAdapter
 from ai_agent_launcher._config import load_config
 from ai_agent_launcher._defaults import default_registry
 from ai_agent_launcher._errors import LauncherError
+from ai_agent_launcher._launchers import describe_launcher, read_launcher_artifact
 from ai_agent_launcher._lifecycle import LauncherLifecycle
 from ai_agent_launcher._models import AgentId
 from ai_agent_launcher._registry import AgentRegistry
@@ -133,6 +134,8 @@ def _launcher(
     parser: argparse.ArgumentParser,
     arguments: list[str],
 ) -> int:
+    if namespace.launcher_command == "describe":
+        return _launcher_describe(namespace, registry)
     config = load_config(namespace.config, registry.identifiers)
     lifecycle = LauncherLifecycle(registry, config)
     if namespace.launcher_command == "create":
@@ -181,6 +184,51 @@ def _launcher_create(namespace: argparse.Namespace, lifecycle: LauncherLifecycle
         tuple(namespace.requested_writable_dirs),
     )
     return 0
+
+
+def _launcher_describe(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
+    metadata = read_launcher_artifact(namespace.launcher)
+    description = describe_launcher(namespace.launcher, metadata)
+    try:
+        config = load_config(namespace.config, registry.identifiers)
+        adapter = registry.get(metadata.agent_id)
+        if not isinstance(adapter, WritableDirectoryAdapter):
+            raise LauncherError(
+                f"agent does not report effective writable directories: {metadata.agent_id}"
+            )
+        report = adapter.resolve_writable_dirs(
+            RunContext(
+                worktree_dir=metadata.worktree_dir,
+                configured_writable_dirs=config.core.writable_dirs,
+                requested_writable_dirs=tuple(
+                    str(directory) for directory in metadata.local_writable_dirs
+                ),
+                passthrough_args=(),
+            ),
+            config.agent_settings.get(metadata.agent_id, {}),
+        )
+    except (LauncherError, LookupError) as error:
+        sys.stdout.write(_format_writable_directory_report(description, (), (str(error),)))
+        return 0
+    sys.stdout.write(
+        _format_writable_directory_report(description, report.directories, report.notes)
+    )
+    return 0
+
+
+def _format_writable_directory_report(
+    description: str, directories: tuple[Path, ...], notes: tuple[str, ...]
+) -> str:
+    lines = [description.rstrip("\n")]
+    if directories:
+        lines.append("effective writable directories:")
+        lines.extend(f"  - {directory}" for directory in sorted(directories))
+    else:
+        lines.append("effective writable directories: none")
+    if notes:
+        lines.append("effective writable directory notes:")
+        lines.extend(f"  - {note}" for note in notes)
+    return "\n".join(lines) + "\n"
 
 
 def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
@@ -256,6 +304,11 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     run = launcher_commands.add_parser("run", help="execute a generated launcher")
     run.add_argument("--launcher", type=Path, required=True)
     run.add_argument("agent_arguments", nargs=argparse.REMAINDER, metavar="AGENT_ARGUMENT")
+
+    describe = launcher_commands.add_parser(
+        "describe", help="describe a generated launcher artifact"
+    )
+    describe.add_argument("--launcher", type=Path, required=True)
 
     pin = launcher_commands.add_parser("pin", help="pin a launcher to a session")
     pin.add_argument("--launcher", type=Path, required=True)

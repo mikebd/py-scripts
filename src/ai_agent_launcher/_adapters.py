@@ -48,6 +48,27 @@ class RuntimeAgentAdapter(AgentAdapter, Protocol):
 
 
 @dataclass(frozen=True)
+class WritableDirectoryReport:
+    """Best-effort agent-owned writable-directory resolution results."""
+
+    directories: tuple[Path, ...]
+    notes: tuple[str, ...]
+
+
+@runtime_checkable
+class WritableDirectoryAdapter(AgentAdapter, Protocol):
+    """Internal extension point for reporting effective writable directories."""
+
+    def resolve_writable_dirs(
+        self,
+        context: RunContext,
+        settings: Mapping[str, object],
+    ) -> WritableDirectoryReport:
+        """Resolve writable directories without starting an agent or modifying the filesystem."""
+        ...
+
+
+@dataclass(frozen=True)
 class AgentSessionMetadata:
     """Agent-neutral session facts used by generated launcher lifecycle commands."""
 

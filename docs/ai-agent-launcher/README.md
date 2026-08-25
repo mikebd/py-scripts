@@ -74,6 +74,36 @@ performs the corresponding temporary Git-tagged installation plus `--version`
 and `--help` checks automatically; it does not create or execute a generated
 launcher.
 
+## Inspect a generated launcher
+
+Generated launchers contain encoded metadata so their shell shims remain small
+and do not interpret state as shell code. Inspect a launcher through the tool:
+
+```bash
+ai-agent-launcher launcher describe --launcher /path/to/launcher
+```
+
+The command reports the artifact's format, selected agent, workspace, session
+state, marker, preparation helper, local writable directories, and the
+best-effort effective writable-directory set for the current machine. It does
+not execute the launcher, invoke an agent, run preparation, or create cache
+directories. It reads the current configuration and asks the selected adapter
+to resolve workspace support paths such as `.context`, Git metadata, and
+available tool caches. If a configuration, worktree, Git, or tool lookup is
+unavailable, it still reports stored metadata and prints a note for the
+unavailable effective-directory source. Newly generated launchers include this
+command as a comment beside their encoded metadata.
+
+For one-shot diagnosis from an untagged checkout, use the same command through
+`uv run`:
+
+```bash
+uv run ai-agent-launcher launcher describe --launcher /path/to/launcher
+```
+
+This diagnoses a launcher artifact but does not make that launcher executable;
+persistent launchers still require an installed `ai-agent-launcher` on `PATH`.
+
 ## Configuration
 
 The default configuration path is

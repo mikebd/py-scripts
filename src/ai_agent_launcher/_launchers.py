@@ -15,13 +15,30 @@ from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._models import AgentId, SessionReference
 from ai_agent_launcher._runtime import resolve_worktree
 
-_METADATA_PREFIX = "# ai-agent-launcher-metadata-v1: "
+_METADATA_FORMAT_VERSION = 1
+_METADATA_PREFIX = f"# ai-agent-launcher-metadata-v{_METADATA_FORMAT_VERSION}: "
+_INSPECTION_HINT = (
+    "# Inspect metadata with: ai-agent-launcher launcher describe --launcher <launcher-path>"
+)
 
 
 @dataclass(frozen=True)
 class LauncherMetadata:
-    """The agent-neutral state persisted in a generated launcher."""
+    """Validated launcher state used by lifecycle operations."""
 
+    agent_id: AgentId
+    worktree_dir: Path
+    marker: str
+    preparation_path: Path | None
+    local_writable_dirs: tuple[Path, ...]
+    session: SessionReference | None
+
+
+@dataclass(frozen=True)
+class LauncherArtifactMetadata:
+    """Structurally valid launcher state without runtime filesystem validation."""
+
+    format_version: int
     agent_id: AgentId
     worktree_dir: Path
     marker: str
@@ -68,6 +85,23 @@ def validate_launcher_creation_inputs(
 
 def read_launcher(path_argument: str | Path) -> LauncherMetadata:
     """Read one supported versioned launcher without executing its contents."""
+    artifact = read_launcher_artifact(path_argument)
+    path = Path(path_argument).expanduser()
+    try:
+        return build_metadata(
+            artifact.agent_id,
+            artifact.worktree_dir,
+            artifact.marker,
+            artifact.preparation_path,
+            tuple(str(directory) for directory in artifact.local_writable_dirs),
+            artifact.session.value if artifact.session is not None else None,
+        )
+    except (LauncherError, ValueError) as error:
+        raise LauncherError(f"launcher metadata is invalid: {path}: {error}") from error
+
+
+def read_launcher_artifact(path_argument: str | Path) -> LauncherArtifactMetadata:
+    """Read supported persisted state without checking its current environment."""
     path = Path(path_argument).expanduser()
     try:
         content = path.read_text(encoding="utf-8")
@@ -90,7 +124,35 @@ def read_launcher(path_argument: str | Path) -> LauncherMetadata:
         raise LauncherError(f"launcher metadata is invalid: {path}") from error
     if not isinstance(payload, dict):
         raise LauncherError(f"launcher metadata is invalid: {path}")
-    return _metadata_from_payload(cast(dict[str, object], payload), path)
+    return _artifact_from_payload(cast(dict[str, object], payload), path)
+
+
+def describe_launcher(
+    path_argument: str | Path, metadata: LauncherArtifactMetadata | None = None
+) -> str:
+    """Return a human-readable description of a supported launcher artifact."""
+    path = Path(path_argument).expanduser()
+    if metadata is None:
+        metadata = read_launcher_artifact(path)
+    session = metadata.session.value if metadata.session is not None else "unpinned"
+    preparation = (
+        str(metadata.preparation_path) if metadata.preparation_path is not None else "none"
+    )
+    lines = [
+        f"launcher: {path}",
+        f"format version: {metadata.format_version}",
+        f"agent: {metadata.agent_id}",
+        f"worktree: {metadata.worktree_dir}",
+        f"session: {session}",
+        f"marker: {metadata.marker}",
+        f"preparation: {preparation}",
+    ]
+    if metadata.local_writable_dirs:
+        lines.append("local writable directories:")
+        lines.extend(f"  - {directory}" for directory in sorted(metadata.local_writable_dirs))
+    else:
+        lines.append("local writable directories: none")
+    return "\n".join(lines) + "\n"
 
 
 def write_launcher(
@@ -116,6 +178,7 @@ def write_launcher(
             "#!/bin/sh",
             "set -eu",
             metadata.marker,
+            _INSPECTION_HINT,
             f"{_METADATA_PREFIX}{encoded}",
             'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"',
             "",
@@ -166,7 +229,7 @@ def atomic_text_write(path_argument: str | Path, content: str, mode: int) -> Non
     _atomic_write(Path(path_argument).expanduser(), content, mode)
 
 
-def _metadata_from_payload(payload: dict[str, object], path: Path) -> LauncherMetadata:
+def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherArtifactMetadata:
     expected_keys = {
         "agent_id",
         "format_version",
@@ -176,7 +239,13 @@ def _metadata_from_payload(payload: dict[str, object], path: Path) -> LauncherMe
         "session_id",
         "worktree_dir",
     }
-    if set(payload) != expected_keys or payload.get("format_version") != 1:
+    format_version = payload.get("format_version")
+    if (
+        set(payload) != expected_keys
+        or not isinstance(format_version, int)
+        or isinstance(format_version, bool)
+        or format_version != _METADATA_FORMAT_VERSION
+    ):
         raise LauncherError(f"unsupported launcher metadata version: {path}")
     agent_value = payload.get("agent_id")
     worktree_value = payload.get("worktree_dir")
@@ -202,13 +271,17 @@ def _metadata_from_payload(payload: dict[str, object], path: Path) -> LauncherMe
             raise LauncherError(f"launcher metadata is invalid: {path}")
         directory_values.append(directory)
     try:
-        return build_metadata(
-            AgentId(agent_value),
-            worktree_value,
-            marker,
-            preparation,
-            tuple(directory_values),
-            session_id,
+        _validate_marker(marker)
+        agent_id = AgentId(agent_value)
+        session = SessionReference(agent_id, session_id) if session_id is not None else None
+        return LauncherArtifactMetadata(
+            format_version=format_version,
+            agent_id=agent_id,
+            worktree_dir=_artifact_path(worktree_value),
+            marker=marker,
+            preparation_path=_artifact_path(preparation) if preparation is not None else None,
+            local_writable_dirs=tuple(_artifact_path(directory) for directory in directory_values),
+            session=session,
         )
     except (LauncherError, ValueError) as error:
         raise LauncherError(f"launcher metadata is invalid: {path}: {error}") from error
@@ -217,7 +290,7 @@ def _metadata_from_payload(payload: dict[str, object], path: Path) -> LauncherMe
 def _encode_metadata(metadata: LauncherMetadata) -> str:
     payload: dict[str, object] = {
         "agent_id": str(metadata.agent_id),
-        "format_version": 1,
+        "format_version": _METADATA_FORMAT_VERSION,
         "local_writable_dirs": [str(path) for path in metadata.local_writable_dirs],
         "marker": metadata.marker,
         "preparation_path": str(metadata.preparation_path)
@@ -247,6 +320,14 @@ def _preparation_path(value: str | Path | None) -> Path | None:
     if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
         raise LauncherError(f"preparation path is not an absolute executable file: {path}")
     return path.resolve()
+
+
+def _artifact_path(value: str) -> Path:
+    """Return one absolute persisted path without requiring it to exist."""
+    path = Path(value)
+    if not path.is_absolute():
+        raise LauncherError("launcher metadata path is not absolute")
+    return path
 
 
 def _canonical_directories(values: tuple[str, ...]) -> tuple[Path, ...]:

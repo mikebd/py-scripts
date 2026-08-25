@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from ai_agent_launcher._adapters import AgentSessionMetadata
+from ai_agent_launcher._adapters import AgentSessionMetadata, WritableDirectoryReport
 from ai_agent_launcher._errors import ConfigError, LauncherError
 from ai_agent_launcher._models import AgentId, SessionReference
 from ai_agent_launcher._runtime import RunContext
@@ -156,6 +156,34 @@ class CodexAdapter:
         )
         return self.run(launcher_context, settings_values, arguments)
 
+    def resolve_writable_dirs(
+        self,
+        context: RunContext,
+        _settings_values: Mapping[str, object],
+    ) -> WritableDirectoryReport:
+        """Best-effort resolve Codex writable directories without creating cache paths."""
+        directories: list[Path] = []
+        notes: list[str] = []
+        for configured_dir in context.configured_writable_dirs:
+            _append_existing_or_note(
+                directories, notes, configured_dir, "configured writable directory"
+            )
+        for requested_dir in context.requested_writable_dirs:
+            _append_existing_or_note(directories, notes, requested_dir, "--add-dir")
+
+        context_dir = context.worktree_dir / ".context"
+        if context_dir.is_dir():
+            _append_unique(directories, context_dir.resolve())
+        try:
+            _append_unique(directories, self._git_dir(context.worktree_dir))
+        except LauncherError as error:
+            notes.append(str(error))
+        cache_dirs, cache_notes = self._described_cache_dirs(context.worktree_dir)
+        for cache_dir in cache_dirs:
+            _append_unique(directories, cache_dir)
+        notes.extend(cache_notes)
+        return WritableDirectoryReport(tuple(directories), tuple(notes))
+
     def session_catalog(self, settings_values: Mapping[str, object]) -> CodexSessionCatalog:
         """Return read-only session discovery for the selected Codex home."""
         return CodexSessionCatalog(self._home(CodexSettings.from_mapping(settings_values)))
@@ -253,6 +281,8 @@ class CodexAdapter:
         except subprocess.CalledProcessError as error:
             details = error.stderr.strip() or "unable to determine the Git directory"
             raise LauncherError(details) from error
+        except OSError as error:
+            raise LauncherError(f"unable to determine the Git directory: {error}") from error
         git_dir = Path(result.stdout.strip())
         if not git_dir.is_absolute():
             git_dir = worktree_dir / git_dir
@@ -275,6 +305,32 @@ class CodexAdapter:
             _append_unique(directories, _create_directory(golangci_cache, "Golangci cache"))
         return tuple(directories)
 
+    def _described_cache_dirs(self, worktree_dir: Path) -> tuple[tuple[Path, ...], tuple[str, ...]]:
+        directories: list[Path] = []
+        notes: list[str] = []
+        go = shutil.which("go")
+        if go is not None:
+            for variable, label in (
+                ("GOCACHE", "Go build cache"),
+                ("GOMODCACHE", "Go module cache"),
+            ):
+                try:
+                    value = self._go_environment(go, variable, worktree_dir)
+                    if value != "off":
+                        _append_unique(directories, _cache_path(value, label))
+                except LauncherError as error:
+                    notes.append(str(error))
+        if shutil.which("golangci-lint") is not None:
+            cache_root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+            golangci_cache = os.environ.get("GOLANGCI_LINT_CACHE") or str(
+                Path(cache_root).expanduser() / "golangci-lint"
+            )
+            try:
+                _append_unique(directories, _cache_path(golangci_cache, "Golangci cache"))
+            except LauncherError as error:
+                notes.append(str(error))
+        return tuple(directories), tuple(notes)
+
     def _go_environment(self, executable: str, variable: str, worktree_dir: Path) -> str:
         try:
             result = subprocess.run(
@@ -287,6 +343,8 @@ class CodexAdapter:
         except subprocess.CalledProcessError as error:
             details = error.stderr.strip() or f"unable to determine {variable}"
             raise LauncherError(details) from error
+        except OSError as error:
+            raise LauncherError(f"unable to determine {variable}: {error}") from error
         value = result.stdout.strip()
         if not value:
             raise LauncherError(f"Go returned an empty {variable}")
@@ -354,6 +412,20 @@ def _create_directory(value: str, label: str) -> Path:
     if not path.is_dir():
         raise LauncherError(f"{label} is not a directory: {path}")
     return path.resolve()
+
+
+def _cache_path(value: str, label: str) -> Path:
+    """Resolve a cache location without creating it for inspection."""
+    return _absolute_path(value, label).resolve()
+
+
+def _append_existing_or_note(
+    directories: list[Path], notes: list[str], value: str, label: str
+) -> None:
+    try:
+        _append_unique(directories, _existing_directory(value, label))
+    except LauncherError as error:
+        notes.append(str(error))
 
 
 def _append_unique(directories: list[Path], candidate: Path) -> None:

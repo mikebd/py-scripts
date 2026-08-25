@@ -145,16 +145,13 @@ def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) ->
     )
     lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
 
-    assert (
-        lifecycle.fork(
-            source,
-            target,
-            adapter.identifier,
-            (str(added),),
-            ("continue", "--quiet"),
-        )
-        == SessionReference(adapter.identifier, "child-session")
-    )
+    assert lifecycle.fork(
+        source,
+        target,
+        adapter.identifier,
+        (str(added),),
+        ("continue", "--quiet"),
+    ) == SessionReference(adapter.identifier, "child-session")
     assert adapter.observed_fork is not None
     context, received_settings, parent, passthrough_args = adapter.observed_fork
     assert context.worktree_dir == worktree.resolve()
