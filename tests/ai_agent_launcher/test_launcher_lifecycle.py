@@ -12,7 +12,12 @@ import pytest
 
 from ai_agent_launcher import _codex
 from ai_agent_launcher._errors import LauncherError
-from ai_agent_launcher._launchers import read_launcher
+from ai_agent_launcher._launchers import (
+    launcher_git_metadata_access,
+    read_launcher,
+    read_launcher_artifact,
+)
+from ai_agent_launcher._models import GitMetadataAccess
 from ai_agent_launcher._runtime import RunContext
 from ai_agent_launcher.cli import main
 
@@ -126,6 +131,9 @@ def test_create_and_pin_preserve_versioned_metadata(
         "--launcher <launcher-path>" in content
     )
     assert read_launcher(launcher).session is None
+    artifact = read_launcher_artifact(launcher)
+    assert artifact.extensions == {"core": {"git_metadata_access": "worktree"}}
+    assert launcher_git_metadata_access(artifact) is GitMetadataAccess.WORKTREE
 
     assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
     assert "session: unpinned" in capsys.readouterr().out
@@ -243,6 +251,9 @@ def test_describe_reports_effective_dirs_and_degrades(
             "session: parent-session",
             "marker: # launcher marker",
             f"preparation: {preparation.resolve()}",
+            "git metadata access: worktree",
+            "metadata extensions:",
+            '  - core.git_metadata_access: "worktree"',
             "local writable directories:",
             f"  - {local_dir.resolve()}",
             "effective writable directories:",
@@ -279,6 +290,163 @@ def test_describe_reports_effective_dirs_and_degrades(
     assert "--add-dir is not an existing directory" in output
     with pytest.raises(LauncherError, match="launcher metadata is invalid"):
         read_launcher(launcher)
+
+
+def test_launcher_create_uses_configured_or_explicit_git_metadata_access(
+    git_worktree: Path, tmp_path: Path
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[core]\ndefault_git_metadata_access = "shared"\n', encoding="utf-8")
+    configured = tmp_path / "configured"
+    explicit = tmp_path / "explicit"
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(configured),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    assert launcher_git_metadata_access(read_launcher(configured)) is GitMetadataAccess.SHARED
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(explicit),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+                "--git-metadata-access",
+                "worktree",
+            ]
+        )
+        == 0
+    )
+    assert launcher_git_metadata_access(read_launcher(explicit)) is GitMetadataAccess.WORKTREE
+
+
+def test_legacy_launcher_uses_implicit_worktree_access_without_rewrite(
+    git_worktree: Path, tmp_path: Path
+) -> None:
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    lines = launcher.read_text(encoding="utf-8").splitlines()
+    metadata_index = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    encoded = lines[metadata_index].removeprefix("# ai-agent-launcher-metadata-v1: ")
+    payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    del payload["extensions"]
+    replacement = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    lines[metadata_index] = f"# ai-agent-launcher-metadata-v1: {replacement}"
+    legacy_content = "\n".join(lines) + "\n"
+    launcher.write_text(legacy_content, encoding="utf-8")
+
+    assert (
+        launcher_git_metadata_access(read_launcher_artifact(launcher)) is GitMetadataAccess.WORKTREE
+    )
+    assert launcher.read_text(encoding="utf-8") == legacy_content
+    assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "one"]) == 0
+
+    lines = launcher.read_text(encoding="utf-8").splitlines()
+    encoded = next(
+        line.removeprefix("# ai-agent-launcher-metadata-v1: ")
+        for line in lines
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    pinned_payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    assert "extensions" not in pinned_payload
+
+
+def test_pin_preserves_unknown_metadata_extensions(
+    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    lines = launcher.read_text(encoding="utf-8").splitlines()
+    metadata_index = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    encoded = lines[metadata_index].removeprefix("# ai-agent-launcher-metadata-v1: ")
+    payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    payload["extensions"] = {"custom": {"enabled": True}}
+    replacement = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    lines[metadata_index] = f"# ai-agent-launcher-metadata-v1: {replacement}"
+    launcher.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "one"]) == 0
+    artifact = read_launcher_artifact(launcher)
+    assert artifact.extensions == {"custom": {"enabled": True}}
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
+    assert "  - custom.enabled: true" in capsys.readouterr().out
 
 
 def test_describe_degrades_when_configuration_is_unavailable(

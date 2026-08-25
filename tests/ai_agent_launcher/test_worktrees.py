@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ai_agent_launcher._launchers import read_launcher
+from ai_agent_launcher._launchers import launcher_git_metadata_access, read_launcher
+from ai_agent_launcher._models import GitMetadataAccess
 from ai_agent_launcher.cli import main
 
 
@@ -40,13 +41,18 @@ def _git(directory: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def _config(path: Path, launcher_directory: Path) -> None:
+def _config(
+    path: Path,
+    launcher_directory: Path,
+    default_git_metadata_access: str = "worktree",
+) -> None:
     path.write_text(
         "\n".join(
             (
                 "[core]",
                 "writable_dirs = []",
                 f'launcher_directory = "{launcher_directory}"',
+                f'default_git_metadata_access = "{default_git_metadata_access}"',
             )
         ),
         encoding="utf-8",
@@ -72,7 +78,7 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
     primary_head = _git(primary_worktree, "rev-parse", "HEAD")
     launcher_directory = tmp_path / "launchers"
     config = tmp_path / "config.toml"
-    _config(config, launcher_directory)
+    _config(config, launcher_directory, "shared")
     preparation = tmp_path / "prepare"
     prepared = tmp_path / "prepared"
     local_directory = tmp_path / "local"
@@ -111,6 +117,7 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
     metadata = read_launcher(launcher_directory / "codex-new-default")
     assert metadata.session is None
     assert metadata.local_writable_dirs == (local_directory.resolve(),)
+    assert launcher_git_metadata_access(metadata) is GitMetadataAccess.SHARED
     assert "default session: none" in capsys.readouterr().out
 
     explicit_target = tmp_path / "new-explicit"
@@ -132,12 +139,17 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
                 str(explicit_launcher),
                 "--marker",
                 "# generated launcher",
+                "--git-metadata-access",
+                "worktree",
             ]
         )
         == 0
     )
     assert _git(explicit_target, "rev-parse", "HEAD") == source_head
     assert explicit_launcher.is_file()
+    assert (
+        launcher_git_metadata_access(read_launcher(explicit_launcher)) is GitMetadataAccess.WORKTREE
+    )
 
 
 def test_stack_derives_strict_sibling_targets_from_committed_source_head(

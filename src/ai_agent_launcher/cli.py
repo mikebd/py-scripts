@@ -15,9 +15,13 @@ from ai_agent_launcher._adapters import RuntimeAgentAdapter, WritableDirectoryAd
 from ai_agent_launcher._config import load_config
 from ai_agent_launcher._defaults import default_registry
 from ai_agent_launcher._errors import LauncherError
-from ai_agent_launcher._launchers import describe_launcher, read_launcher_artifact
+from ai_agent_launcher._launchers import (
+    describe_launcher,
+    launcher_git_metadata_access,
+    read_launcher_artifact,
+)
 from ai_agent_launcher._lifecycle import LauncherLifecycle
-from ai_agent_launcher._models import AgentId
+from ai_agent_launcher._models import AgentId, GitMetadataAccess
 from ai_agent_launcher._registry import AgentRegistry
 from ai_agent_launcher._runtime import RunContext, resolve_worktree
 from ai_agent_launcher._worktrees import CreatedWorktree, WorktreeLifecycle
@@ -124,6 +128,7 @@ def _run(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
         configured_writable_dirs=config.core.writable_dirs,
         requested_writable_dirs=tuple(namespace.requested_writable_dirs),
         passthrough_args=_passthrough(namespace.agent_arguments),
+        git_metadata_access=config.core.default_git_metadata_access,
     )
     return adapter.run(context, config.agent_settings.get(identifier, {}), namespace)
 
@@ -159,6 +164,7 @@ def _launcher(
             _optional_agent(namespace.agent),
             tuple(namespace.requested_writable_dirs),
             _passthrough(namespace.agent_arguments),
+            _optional_git_metadata_access(namespace.git_metadata_access),
         )
         return 0
     if namespace.launcher_command == "adopt":
@@ -168,6 +174,7 @@ def _launcher(
             namespace.session_id,
             _optional_agent(namespace.agent),
             tuple(namespace.requested_writable_dirs),
+            _optional_git_metadata_access(namespace.git_metadata_access),
         )
         return 0
     parser.error("launcher command is required")
@@ -182,6 +189,7 @@ def _launcher_create(namespace: argparse.Namespace, lifecycle: LauncherLifecycle
         namespace.marker,
         namespace.preparation_path,
         tuple(namespace.requested_writable_dirs),
+        _optional_git_metadata_access(namespace.git_metadata_access),
     )
     return 0
 
@@ -204,6 +212,7 @@ def _launcher_describe(namespace: argparse.Namespace, registry: AgentRegistry) -
                     str(directory) for directory in metadata.local_writable_dirs
                 ),
                 passthrough_args=(),
+                git_metadata_access=launcher_git_metadata_access(metadata),
             ),
             config.agent_settings.get(metadata.agent_id, {}),
         )
@@ -247,6 +256,7 @@ def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
             namespace.marker,
             namespace.preparation_path,
             tuple(namespace.requested_writable_dirs),
+            _optional_git_metadata_access(namespace.git_metadata_access),
         )
     elif namespace.worktree_command == "stack":
         result = worktrees.stack(
@@ -255,6 +265,7 @@ def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
             namespace.marker,
             namespace.preparation_path,
             tuple(namespace.requested_writable_dirs),
+            _optional_git_metadata_access(namespace.git_metadata_access),
         )
     else:
         raise LauncherError("worktree command is required")
@@ -300,6 +311,7 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     create.add_argument("--marker", required=True)
     create.add_argument("--prepare", dest="preparation_path", type=Path)
     _add_directories_argument(create)
+    _add_git_metadata_access_argument(create)
 
     run = launcher_commands.add_parser("run", help="execute a generated launcher")
     run.add_argument("--launcher", type=Path, required=True)
@@ -319,12 +331,14 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     fork = launcher_commands.add_parser("fork", help="fork a pinned launcher session")
     _add_source_target_arguments(fork, agent_choices)
     _add_directories_argument(fork)
+    _add_git_metadata_access_argument(fork)
     fork.add_argument("agent_arguments", nargs=argparse.REMAINDER, metavar="AGENT_ARGUMENT")
 
     adopt = launcher_commands.add_parser("adopt", help="bind a launcher to an existing session")
     _add_source_target_arguments(adopt, agent_choices)
     adopt.add_argument("--session-id", required=True)
     _add_directories_argument(adopt)
+    _add_git_metadata_access_argument(adopt)
 
 
 def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
@@ -363,6 +377,15 @@ def _add_worktree_launcher_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--marker", required=True)
     parser.add_argument("--prepare", dest="preparation_path", type=Path)
     _add_directories_argument(parser)
+    _add_git_metadata_access_argument(parser)
+
+
+def _add_git_metadata_access_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--git-metadata-access",
+        choices=[access.value for access in GitMetadataAccess],
+        help="persist Git metadata access for the generated launcher",
+    )
 
 
 def _add_source_target_arguments(parser: argparse.ArgumentParser, agent_choices: list[str]) -> None:
@@ -373,6 +396,10 @@ def _add_source_target_arguments(parser: argparse.ArgumentParser, agent_choices:
 
 def _optional_agent(value: str | None) -> AgentId | None:
     return AgentId(value) if value is not None else None
+
+
+def _optional_git_metadata_access(value: str | None) -> GitMetadataAccess | None:
+    return GitMetadataAccess(value) if value is not None else None
 
 
 def _passthrough(values: list[str]) -> tuple[str, ...]:

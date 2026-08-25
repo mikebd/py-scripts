@@ -4,7 +4,7 @@ import pytest
 
 from ai_agent_launcher._config import default_config_path, load_config
 from ai_agent_launcher._errors import ConfigError
-from ai_agent_launcher._models import AgentId
+from ai_agent_launcher._models import AgentId, GitMetadataAccess
 
 
 def test_missing_default_configuration_uses_empty_values(
@@ -17,6 +17,7 @@ def test_missing_default_configuration_uses_empty_values(
     assert default_config_path() == tmp_path / "config" / "ai-agent-launcher" / "config.toml"
     assert config.core.writable_dirs == ()
     assert config.core.launcher_directory is None
+    assert config.core.default_git_metadata_access is GitMetadataAccess.WORKTREE
     assert config.agent_settings == {}
 
 
@@ -27,6 +28,7 @@ def test_configuration_parses_core_and_selected_agent(tmp_path: Path) -> None:
 [core]
 writable_dirs = ["/tmp/one"]
 launcher_directory = "/tmp/launchers"
+default_git_metadata_access = "shared"
 
 [agents.codex]
 model = "test-model"
@@ -38,6 +40,7 @@ model = "test-model"
 
     assert config.core.writable_dirs == ("/tmp/one",)
     assert config.core.launcher_directory == Path("/tmp/launchers")
+    assert config.core.default_git_metadata_access is GitMetadataAccess.SHARED
     assert config.agent_settings[AgentId("codex")] == {"model": "test-model"}
 
 
@@ -48,6 +51,7 @@ model = "test-model"
         ("unknown = true", "unknown configuration"),
         ("[core]\nwritable_dirs = [1]", "array of strings"),
         ('[core]\nlauncher_directory = "relative"', "absolute path"),
+        ('[core]\ndefault_git_metadata_access = "all"', "must be one of"),
         ('[agents.claude]\nmodel = "x"', "unsupported agent"),
     ],
 )

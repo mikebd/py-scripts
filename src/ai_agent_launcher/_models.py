@@ -2,9 +2,17 @@
 
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import override
 
 _AGENT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]*$")
+
+
+class GitMetadataAccess(StrEnum):
+    """The Git metadata visibility granted to an agent runtime."""
+
+    WORKTREE = "worktree"
+    SHARED = "shared"
 
 
 @dataclass(frozen=True, order=True)

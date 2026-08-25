@@ -54,12 +54,19 @@ def _fake_codex(tmp_path: Path) -> tuple[Path, Path]:
     return executable, output
 
 
-def _write_config(path: Path, executable: Path, home: Path, writable_dir: Path) -> None:
+def _write_config(
+    path: Path,
+    executable: Path,
+    home: Path,
+    writable_dir: Path,
+    git_metadata_access: str = "worktree",
+) -> None:
     path.write_text(
         "\n".join(
             [
                 "[core]",
                 f'writable_dirs = ["{writable_dir}"]',
+                f'default_git_metadata_access = "{git_metadata_access}"',
                 "",
                 "[agents.codex]",
                 f'executable = "{executable}"',
@@ -273,3 +280,132 @@ def test_run_requires_separator_for_passthrough(git_worktree: Path) -> None:
                 "unexpected",
             ]
         )
+
+
+def test_linked_worktree_git_metadata_access_is_shared_only_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("GIT_INDEX_FILE", raising=False)
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=primary, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=primary, check=True)
+    subprocess.run(["git", "config", "user.name", "Launcher Test"], cwd=primary, check=True)
+    (primary / "README.md").write_text("test\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=primary, check=True)
+    subprocess.run(["git", "commit", "-qm", "initial"], cwd=primary, check=True)
+    linked = tmp_path / "linked"
+    subprocess.run(
+        ["git", "worktree", "add", "-qb", "feature/linked", str(linked), "HEAD"],
+        cwd=primary,
+        check=True,
+    )
+    git_dir = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=linked,
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout.strip()
+    )
+    common_dir = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=linked,
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout.strip()
+    )
+    git_dir = (linked / git_dir).resolve() if not git_dir.is_absolute() else git_dir.resolve()
+    common_dir = (
+        (linked / common_dir).resolve() if not common_dir.is_absolute() else common_dir.resolve()
+    )
+    assert git_dir != common_dir
+
+    executable, output = _fake_codex(tmp_path)
+    writable_dir = tmp_path / "writable"
+    writable_dir.mkdir()
+    config_path = tmp_path / "config.toml"
+    home = tmp_path / "home"
+    monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
+    _disable_optional_cache_tools(monkeypatch)
+
+    _write_config(config_path, executable, home, writable_dir)
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "run",
+                "--agent",
+                "codex",
+                "--worktree-dir",
+                str(linked),
+            ]
+        )
+        == 0
+    )
+    worktree_arguments = json.loads(output.read_text(encoding="utf-8"))["argv"]
+    assert str(git_dir) in worktree_arguments
+    assert str(common_dir) not in worktree_arguments
+
+    _write_config(config_path, executable, home, writable_dir, "shared")
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "run",
+                "--agent",
+                "codex",
+                "--worktree-dir",
+                str(linked),
+            ]
+        )
+        == 0
+    )
+    shared_arguments = json.loads(output.read_text(encoding="utf-8"))["argv"]
+    assert str(git_dir) in shared_arguments
+    assert str(common_dir) in shared_arguments
+
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(linked),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "describe",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    description = capsys.readouterr().out
+    assert "git metadata access: shared" in description
+    assert f"  - {git_dir}" in description
+    assert f"  - {common_dir}" in description

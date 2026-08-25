@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ai_agent_launcher._adapters import AgentSessionMetadata, WritableDirectoryReport
 from ai_agent_launcher._errors import ConfigError, LauncherError
-from ai_agent_launcher._models import AgentId, SessionReference
+from ai_agent_launcher._models import AgentId, GitMetadataAccess, SessionReference
 from ai_agent_launcher._runtime import RunContext
 from ai_agent_launcher._sessions import CodexSessionCatalog
 
@@ -153,6 +153,7 @@ class CodexAdapter:
             configured_writable_dirs=context.configured_writable_dirs,
             requested_writable_dirs=context.requested_writable_dirs,
             passthrough_args=passthrough_args,
+            git_metadata_access=context.git_metadata_access,
         )
         return self.run(launcher_context, settings_values, arguments)
 
@@ -175,7 +176,8 @@ class CodexAdapter:
         if context_dir.is_dir():
             _append_unique(directories, context_dir.resolve())
         try:
-            _append_unique(directories, self._git_dir(context.worktree_dir))
+            for git_dir in self._git_dirs(context):
+                _append_unique(directories, git_dir)
         except LauncherError as error:
             notes.append(str(error))
         cache_dirs, cache_notes = self._described_cache_dirs(context.worktree_dir)
@@ -230,6 +232,7 @@ class CodexAdapter:
             configured_writable_dirs=context.configured_writable_dirs,
             requested_writable_dirs=context.requested_writable_dirs,
             passthrough_args=passthrough_args,
+            git_metadata_access=context.git_metadata_access,
         )
         exit_status = self.run(fork_context, settings_values, arguments)
         if exit_status != 0:
@@ -265,24 +268,33 @@ class CodexAdapter:
         context_dir = context.worktree_dir / ".context"
         if context_dir.is_dir():
             _append_unique(directories, context_dir.resolve())
-        _append_unique(directories, self._git_dir(context.worktree_dir))
+        for git_dir in self._git_dirs(context):
+            _append_unique(directories, git_dir)
         for cache_dir in self._cache_dirs(context.worktree_dir):
             _append_unique(directories, cache_dir)
         return tuple(directories)
 
-    def _git_dir(self, worktree_dir: Path) -> Path:
+    def _git_dirs(self, context: RunContext) -> tuple[Path, ...]:
+        directories = [self._git_path(context.worktree_dir, "--git-dir", "Git directory")]
+        if context.git_metadata_access is GitMetadataAccess.SHARED:
+            directories.append(
+                self._git_path(context.worktree_dir, "--git-common-dir", "Git common directory")
+            )
+        return tuple(dict.fromkeys(directories))
+
+    def _git_path(self, worktree_dir: Path, argument: str, label: str) -> Path:
         try:
             result = subprocess.run(
-                ["git", "-C", str(worktree_dir), "rev-parse", "--git-dir"],
+                ["git", "-C", str(worktree_dir), "rev-parse", argument],
                 capture_output=True,
                 check=True,
                 text=True,
             )
         except subprocess.CalledProcessError as error:
-            details = error.stderr.strip() or "unable to determine the Git directory"
+            details = error.stderr.strip() or f"unable to determine the {label}"
             raise LauncherError(details) from error
         except OSError as error:
-            raise LauncherError(f"unable to determine the Git directory: {error}") from error
+            raise LauncherError(f"unable to determine the {label}: {error}") from error
         git_dir = Path(result.stdout.strip())
         if not git_dir.is_absolute():
             git_dir = worktree_dir / git_dir

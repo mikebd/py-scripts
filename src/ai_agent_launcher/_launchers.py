@@ -7,12 +7,12 @@ import json
 import os
 import stat
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
 from ai_agent_launcher._errors import LauncherError
-from ai_agent_launcher._models import AgentId, SessionReference
+from ai_agent_launcher._models import AgentId, GitMetadataAccess, SessionReference
 from ai_agent_launcher._runtime import resolve_worktree
 
 _METADATA_FORMAT_VERSION = 1
@@ -20,6 +20,9 @@ _METADATA_PREFIX = f"# ai-agent-launcher-metadata-v{_METADATA_FORMAT_VERSION}: "
 _INSPECTION_HINT = (
     "# Inspect metadata with: ai-agent-launcher launcher describe --launcher <launcher-path>"
 )
+
+type MetadataExtensionValue = str | int | float | bool | None
+type MetadataExtensions = dict[str, dict[str, MetadataExtensionValue]]
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,7 @@ class LauncherMetadata:
     preparation_path: Path | None
     local_writable_dirs: tuple[Path, ...]
     session: SessionReference | None
+    extensions: MetadataExtensions | None
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,7 @@ class LauncherArtifactMetadata:
     preparation_path: Path | None
     local_writable_dirs: tuple[Path, ...]
     session: SessionReference | None
+    extensions: MetadataExtensions | None
 
 
 def build_metadata(
@@ -54,6 +59,7 @@ def build_metadata(
     preparation_argument: str | Path | None,
     local_writable_dirs: tuple[str, ...],
     session_id: str | None = None,
+    extensions: MetadataExtensions | None = None,
 ) -> LauncherMetadata:
     """Validate creation inputs and return canonical launcher metadata."""
     _validate_marker(marker)
@@ -68,6 +74,7 @@ def build_metadata(
         preparation_path=preparation_path,
         local_writable_dirs=directories,
         session=session,
+        extensions=_validated_extensions(extensions) if extensions is not None else None,
     )
 
 
@@ -95,6 +102,7 @@ def read_launcher(path_argument: str | Path) -> LauncherMetadata:
             artifact.preparation_path,
             tuple(str(directory) for directory in artifact.local_writable_dirs),
             artifact.session.value if artifact.session is not None else None,
+            artifact.extensions,
         )
     except (LauncherError, ValueError) as error:
         raise LauncherError(f"launcher metadata is invalid: {path}: {error}") from error
@@ -146,7 +154,16 @@ def describe_launcher(
         f"session: {session}",
         f"marker: {metadata.marker}",
         f"preparation: {preparation}",
+        _git_metadata_access_description(metadata),
     ]
+    if metadata.extensions:
+        lines.append("metadata extensions:")
+        for namespace in sorted(metadata.extensions):
+            for name in sorted(metadata.extensions[namespace]):
+                value = metadata.extensions[namespace][name]
+                lines.append(f"  - {namespace}.{name}: {json.dumps(value, sort_keys=True)}")
+    else:
+        lines.append("metadata extensions: none")
     if metadata.local_writable_dirs:
         lines.append("local writable directories:")
         lines.extend(f"  - {directory}" for directory in sorted(metadata.local_writable_dirs))
@@ -194,14 +211,7 @@ def preflight_launcher_target(path_argument: str | Path) -> None:
 
 def replace_session(metadata: LauncherMetadata, session_id: str) -> LauncherMetadata:
     """Return metadata pinned to one opaque session reference."""
-    return LauncherMetadata(
-        agent_id=metadata.agent_id,
-        worktree_dir=metadata.worktree_dir,
-        marker=metadata.marker,
-        preparation_path=metadata.preparation_path,
-        local_writable_dirs=metadata.local_writable_dirs,
-        session=SessionReference(metadata.agent_id, session_id),
-    )
+    return replace(metadata, session=SessionReference(metadata.agent_id, session_id))
 
 
 def with_local_directories(
@@ -209,14 +219,35 @@ def with_local_directories(
 ) -> LauncherMetadata:
     """Append caller directories after inherited entries with canonical deduplication."""
     merged = tuple(str(path) for path in metadata.local_writable_dirs) + directories
-    return LauncherMetadata(
-        agent_id=metadata.agent_id,
-        worktree_dir=metadata.worktree_dir,
-        marker=metadata.marker,
-        preparation_path=metadata.preparation_path,
-        local_writable_dirs=_canonical_directories(merged),
-        session=metadata.session,
-    )
+    return replace(metadata, local_writable_dirs=_canonical_directories(merged))
+
+
+def with_git_metadata_access(
+    metadata: LauncherMetadata, access: GitMetadataAccess
+) -> LauncherMetadata:
+    """Persist one explicit Git metadata access policy on a generated launcher."""
+    extensions = _copy_extensions(metadata.extensions) or {}
+    core = extensions.setdefault("core", {})
+    core["git_metadata_access"] = access.value
+    return replace(metadata, extensions=extensions)
+
+
+def launcher_git_metadata_access(
+    metadata: LauncherMetadata | LauncherArtifactMetadata,
+) -> GitMetadataAccess:
+    """Return the stored Git metadata policy or the conservative legacy default."""
+    if metadata.extensions is None:
+        return GitMetadataAccess.WORKTREE
+    core = metadata.extensions.get("core")
+    if core is None or "git_metadata_access" not in core:
+        return GitMetadataAccess.WORKTREE
+    value = core["git_metadata_access"]
+    if not isinstance(value, str):
+        raise LauncherError("launcher metadata has an invalid core.git_metadata_access")
+    try:
+        return GitMetadataAccess(value)
+    except ValueError as error:
+        raise LauncherError("launcher metadata has an invalid core.git_metadata_access") from error
 
 
 def launcher_mode(path_argument: str | Path) -> int:
@@ -245,7 +276,8 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
     }
     format_version = payload.get("format_version")
     if (
-        set(payload) != expected_keys
+        not expected_keys.issubset(payload)
+        or set(payload).difference(expected_keys | {"extensions"})
         or not isinstance(format_version, int)
         or isinstance(format_version, bool)
         or format_version != _METADATA_FORMAT_VERSION
@@ -278,6 +310,9 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
         _validate_marker(marker)
         agent_id = AgentId(agent_value)
         session = SessionReference(agent_id, session_id) if session_id is not None else None
+        extensions = (
+            _validated_extensions(payload["extensions"]) if "extensions" in payload else None
+        )
         return LauncherArtifactMetadata(
             format_version=format_version,
             agent_id=agent_id,
@@ -286,6 +321,7 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
             preparation_path=_artifact_path(preparation) if preparation is not None else None,
             local_writable_dirs=tuple(_artifact_path(directory) for directory in directory_values),
             session=session,
+            extensions=extensions,
         )
     except (LauncherError, ValueError) as error:
         raise LauncherError(f"launcher metadata is invalid: {path}: {error}") from error
@@ -303,6 +339,8 @@ def _encode_metadata(metadata: LauncherMetadata) -> str:
         "session_id": metadata.session.value if metadata.session is not None else None,
         "worktree_dir": str(metadata.worktree_dir),
     }
+    if metadata.extensions is not None:
+        payload["extensions"] = metadata.extensions
     return (
         base64.urlsafe_b64encode(
             json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -346,6 +384,54 @@ def _canonical_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
         if resolved not in directories:
             directories.append(resolved)
     return tuple(directories)
+
+
+def _git_metadata_access_description(
+    metadata: LauncherMetadata | LauncherArtifactMetadata,
+) -> str:
+    access = launcher_git_metadata_access(metadata)
+    explicit = metadata.extensions is not None and "git_metadata_access" in metadata.extensions.get(
+        "core", {}
+    )
+    suffix = "" if explicit else " (implicit default)"
+    return f"git metadata access: {access.value}{suffix}"
+
+
+def _validated_extensions(value: object) -> MetadataExtensions:
+    if not isinstance(value, dict):
+        raise LauncherError("launcher metadata extensions must be an object")
+    extensions: MetadataExtensions = {}
+    for namespace, raw_settings in cast(dict[object, object], value).items():
+        if not isinstance(namespace, str) or not namespace or not isinstance(raw_settings, dict):
+            raise LauncherError("launcher metadata extensions must use non-empty object namespaces")
+        settings: dict[str, MetadataExtensionValue] = {}
+        for name, raw_value in cast(dict[object, object], raw_settings).items():
+            if not isinstance(name, str) or not name or not _is_extension_value(raw_value):
+                raise LauncherError("launcher metadata extension settings are invalid")
+            settings[name] = cast(MetadataExtensionValue, raw_value)
+        extensions[namespace] = settings
+    core = extensions.get("core")
+    if core is not None and "git_metadata_access" in core:
+        value = core["git_metadata_access"]
+        if not isinstance(value, str):
+            raise LauncherError("launcher metadata has an invalid core.git_metadata_access")
+        try:
+            GitMetadataAccess(value)
+        except ValueError as error:
+            raise LauncherError(
+                "launcher metadata has an invalid core.git_metadata_access"
+            ) from error
+    return extensions
+
+
+def _is_extension_value(value: object) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def _copy_extensions(extensions: MetadataExtensions | None) -> MetadataExtensions | None:
+    if extensions is None:
+        return None
+    return {namespace: dict(settings) for namespace, settings in extensions.items()}
 
 
 def _atomic_write(path: Path, content: str, mode: int) -> None:

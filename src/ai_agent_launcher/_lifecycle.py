@@ -12,14 +12,16 @@ from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._launchers import (
     LauncherMetadata,
     build_metadata,
+    launcher_git_metadata_access,
     launcher_mode,
     preflight_launcher_target,
     read_launcher,
     replace_session,
+    with_git_metadata_access,
     with_local_directories,
     write_launcher,
 )
-from ai_agent_launcher._models import AgentId, SessionReference
+from ai_agent_launcher._models import AgentId, GitMetadataAccess, SessionReference
 from ai_agent_launcher._registry import AgentRegistry
 from ai_agent_launcher._runtime import RunContext
 
@@ -39,6 +41,7 @@ class LauncherLifecycle:
         marker: str,
         preparation_path: Path | None,
         local_writable_dirs: tuple[str, ...],
+        git_metadata_access: GitMetadataAccess | None = None,
     ) -> Path:
         """Create an initially unpinned launcher for an existing worktree."""
         self._runtime_adapter(agent_id)
@@ -49,7 +52,8 @@ class LauncherLifecycle:
             preparation_path,
             local_writable_dirs,
         )
-        return write_launcher(launcher, metadata)
+        access = git_metadata_access or self._config.core.default_git_metadata_access
+        return write_launcher(launcher, with_git_metadata_access(metadata, access))
 
     def run(self, launcher: Path, passthrough_args: tuple[str, ...]) -> int:
         """Run a rendered launcher through its selected runtime adapter."""
@@ -104,6 +108,7 @@ class LauncherLifecycle:
         expected_agent: AgentId | None,
         additional_dirs: tuple[str, ...],
         passthrough_args: tuple[str, ...],
+        git_metadata_access: GitMetadataAccess | None = None,
     ) -> SessionReference:
         """Create a child session and render a target launcher for it."""
         metadata = self._source(launcher, expected_agent)
@@ -118,7 +123,12 @@ class LauncherLifecycle:
             metadata.session,
             passthrough_args,
         )
+        access = git_metadata_access or launcher_git_metadata_access(metadata)
         target = replace_session(with_local_directories(metadata, additional_dirs), session.value)
+        target = with_git_metadata_access(
+            target,
+            access,
+        )
         write_launcher(target_launcher, target)
         return session
 
@@ -129,6 +139,7 @@ class LauncherLifecycle:
         session_id: str,
         expected_agent: AgentId | None,
         additional_dirs: tuple[str, ...],
+        git_metadata_access: GitMetadataAccess | None = None,
     ) -> None:
         """Create a target launcher for an existing same-worktree agent session."""
         metadata = self._source(launcher, expected_agent)
@@ -151,7 +162,12 @@ class LauncherLifecycle:
                     f"info: adopted session {session_id} forked from {record.forked_from.value}, "
                     f"not source launcher session {metadata.session.value}"
                 )
+        access = git_metadata_access or launcher_git_metadata_access(metadata)
         target = replace_session(with_local_directories(metadata, additional_dirs), session_id)
+        target = with_git_metadata_access(
+            target,
+            access,
+        )
         write_launcher(target_launcher, target)
 
     def metadata(self, launcher: Path, expected_agent: AgentId | None = None) -> LauncherMetadata:
@@ -172,6 +188,7 @@ class LauncherLifecycle:
             configured_writable_dirs=self._config.core.writable_dirs,
             requested_writable_dirs=tuple(str(path) for path in metadata.local_writable_dirs),
             passthrough_args=passthrough_args,
+            git_metadata_access=launcher_git_metadata_access(metadata),
         )
 
     def _settings(self, agent_id: AgentId) -> Mapping[str, object]:

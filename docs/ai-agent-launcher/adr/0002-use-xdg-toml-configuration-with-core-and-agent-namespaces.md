@@ -53,4 +53,4 @@ option.
 
 ## Related ADRs
 
-None.
+- [0004: Use inspectable optional launcher metadata extensions](0004-use-inspectable-optional-launcher-metadata-extensions.md)

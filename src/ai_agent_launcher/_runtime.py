@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ai_agent_launcher._errors import LauncherError
+from ai_agent_launcher._models import GitMetadataAccess
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class RunContext:
     configured_writable_dirs: tuple[str, ...]
     requested_writable_dirs: tuple[str, ...]
     passthrough_args: tuple[str, ...]
+    git_metadata_access: GitMetadataAccess = GitMetadataAccess.WORKTREE
 
 
 def resolve_worktree(worktree_argument: str | None) -> Path:

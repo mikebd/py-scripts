@@ -11,9 +11,9 @@ import pytest
 from ai_agent_launcher._adapters import AgentSessionMetadata
 from ai_agent_launcher._config import CoreConfig, LauncherConfig
 from ai_agent_launcher._errors import LauncherError
-from ai_agent_launcher._launchers import read_launcher
+from ai_agent_launcher._launchers import launcher_git_metadata_access, read_launcher
 from ai_agent_launcher._lifecycle import LauncherLifecycle
-from ai_agent_launcher._models import AgentId, SessionReference
+from ai_agent_launcher._models import AgentId, GitMetadataAccess, SessionReference
 from ai_agent_launcher._registry import AgentRegistry
 from ai_agent_launcher._runtime import RunContext
 
@@ -142,6 +142,7 @@ def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) ->
         "# generated launcher",
         None,
         (str(inherited),),
+        GitMetadataAccess.SHARED,
     )
     lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
 
@@ -162,6 +163,21 @@ def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) ->
     target_metadata = read_launcher(target)
     assert target_metadata.session == SessionReference(adapter.identifier, "child-session")
     assert target_metadata.local_writable_dirs == (inherited.resolve(), added.resolve())
+    assert launcher_git_metadata_access(target_metadata) is GitMetadataAccess.SHARED
+
+    override_target = tmp_path / "override-target-launcher"
+    assert lifecycle.fork(
+        source,
+        override_target,
+        adapter.identifier,
+        (),
+        (),
+        GitMetadataAccess.WORKTREE,
+    ) == SessionReference(adapter.identifier, "child-session")
+    assert (
+        launcher_git_metadata_access(read_launcher(override_target))
+        is GitMetadataAccess.WORKTREE
+    )
 
 
 def test_launcher_lifecycle_rejects_existing_fork_target_before_preparation_or_fork(
@@ -235,6 +251,18 @@ def test_launcher_lifecycle_delegates_adopt_and_rejects_other_worktrees(tmp_path
         SessionReference(adapter.identifier, "existing-session"),
     )
     assert read_launcher(target).session == SessionReference(adapter.identifier, "existing-session")
+    assert launcher_git_metadata_access(read_launcher(target)) is GitMetadataAccess.WORKTREE
+
+    shared_target = tmp_path / "shared-target-launcher"
+    lifecycle.adopt(
+        source,
+        shared_target,
+        "existing-session",
+        adapter.identifier,
+        (),
+        GitMetadataAccess.SHARED,
+    )
+    assert launcher_git_metadata_access(read_launcher(shared_target)) is GitMetadataAccess.SHARED
 
     adapter.found_session = AgentSessionMetadata(
         SessionReference(adapter.identifier, "other-session"),

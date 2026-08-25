@@ -84,15 +84,16 @@ ai-agent-launcher launcher describe --launcher /path/to/launcher
 ```
 
 The command reports the artifact's format, selected agent, workspace, session
-state, marker, preparation helper, local writable directories, and the
-best-effort effective writable-directory set for the current machine. It does
-not execute the launcher, invoke an agent, run preparation, or create cache
-directories. It reads the current configuration and asks the selected adapter
-to resolve workspace support paths such as `.context`, Git metadata, and
-available tool caches. If a configuration, worktree, Git, or tool lookup is
-unavailable, it still reports stored metadata and prints a note for the
-unavailable effective-directory source. Newly generated launchers include this
-command as a comment beside their encoded metadata.
+state, marker, preparation helper, persisted metadata extensions, local
+writable directories, and the best-effort effective writable-directory set for
+the current machine. It does not execute the launcher, invoke an agent, run
+preparation, or create cache directories. It reads the current configuration
+and asks the selected adapter to resolve workspace support paths such as
+`.context`, Git metadata, and available tool caches. If a configuration,
+worktree, Git, or tool lookup is unavailable, it still reports stored metadata
+and prints a note for the unavailable effective-directory source. Newly
+generated launchers include this command as a comment beside their encoded
+metadata.
 
 For one-shot diagnosis from an untagged checkout, use the same command through
 `uv run`:
@@ -115,6 +116,46 @@ Run `ai-agent-launcher --help` for the current launcher, worktree, and runtime
 commands. Existing legacy Bash launcher artifacts are not imported; create
 new launchers explicitly.
 
+### Git metadata access
+
+The core default is conservative:
+
+```toml
+[core]
+default_git_metadata_access = "worktree"
+```
+
+`worktree` lets the Codex adapter add the selected worktree's Git directory,
+but does not automatically grant access to its shared Git common directory.
+Use `shared` only when the launched agent needs to write shared metadata such
+as refs or other data shared by linked worktrees:
+
+```toml
+[core]
+default_git_metadata_access = "shared"
+```
+
+The configuration default applies to direct `run` invocations and newly
+created launchers. New launchers persist their effective selection explicitly.
+Override it for one launcher without changing the default:
+
+```bash
+ai-agent-launcher launcher create ... --git-metadata-access shared
+ai-agent-launcher worktree new ... --git-metadata-access worktree
+```
+
+`launcher fork` and `launcher adopt` inherit the source launcher's policy
+unless given the same explicit option. Older launchers without this persisted
+setting continue with implicit `worktree` access and are not rewritten merely
+by inspection, execution, or pinning. Use `launcher describe` to verify the
+stored and effective policy.
+
+The conservative default follows the safety rationale in the
+[AI-agent runtime Git-permissions guidance](https://github.com/mikebd/ai-agent-skills/blob/main/shared/references/agent-runtime/DEVELOPER_INSTRUCTIONS.md#git-permissions).
+That guidance is a reference for this default, not a restriction on users who
+choose the less strict `shared` policy for an individual launcher or their
+configuration.
+
 ## Codex-specific behavior
 
 The Codex adapter adds writable directories that are needed by its
@@ -126,7 +167,8 @@ local sandbox and the tools it may run. They are in addition to the generic
 | `[core].writable_dirs` | Each configured path | Must already be an existing directory. |
 | Launcher-local `--add-dir` entries | Each path stored in launcher metadata | Must already be an existing directory. |
 | `<worktree>/.context` | The directory exists | Added when present. |
-| Git directory | The launcher worktree has resolvable Git metadata | Added for the worktree, including linked-worktree Git directories. |
+| Git directory | The launcher worktree has resolvable Git metadata | Adds the worktree-specific directory from `git rev-parse --git-dir`. |
+| Git common directory | The launcher's persisted Git metadata access is `shared` | Adds the shared directory from `git rev-parse --git-common-dir`. |
 | Go build cache | `go` is on `PATH` and `go env GOCACHE` is not `off` | The reported cache directory is created when needed. |
 | Go module cache | `go` is on `PATH`; path from `go env GOMODCACHE` | The reported cache directory is created when needed. |
 | GolangCI-Lint cache | `golangci-lint` is on `PATH` | Uses `$GOLANGCI_LINT_CACHE`, then `$XDG_CACHE_HOME/golangci-lint`, then `$HOME/.cache/golangci-lint`; the directory is created when needed. |

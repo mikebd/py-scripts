@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from ai_agent_launcher._errors import ConfigError
-from ai_agent_launcher._models import AgentId
+from ai_agent_launcher._models import AgentId, GitMetadataAccess
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class CoreConfig:
 
     writable_dirs: tuple[str, ...]
     launcher_directory: Path | None
+    default_git_metadata_access: GitMetadataAccess = GitMetadataAccess.WORKTREE
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,9 @@ def load_config(
 
 def _parse_core(value: object) -> CoreConfig:
     table = _require_table(value, "[core]")
-    unexpected_keys = set(table).difference({"writable_dirs", "launcher_directory"})
+    unexpected_keys = set(table).difference(
+        {"writable_dirs", "launcher_directory", "default_git_metadata_access"}
+    )
     if unexpected_keys:
         keys = ", ".join(sorted(unexpected_keys))
         raise ConfigError(f"unknown [core] setting: {keys}")
@@ -91,9 +94,21 @@ def _parse_core(value: object) -> CoreConfig:
         launcher_directory_path: Path | None = candidate.resolve()
     else:
         launcher_directory_path = None
+    raw_git_metadata_access = table.get(
+        "default_git_metadata_access", GitMetadataAccess.WORKTREE.value
+    )
+    if not isinstance(raw_git_metadata_access, str):
+        raise ConfigError("core.default_git_metadata_access must be one of: worktree, shared")
+    try:
+        git_metadata_access = GitMetadataAccess(raw_git_metadata_access)
+    except ValueError as error:
+        raise ConfigError(
+            "core.default_git_metadata_access must be one of: worktree, shared"
+        ) from error
     return CoreConfig(
         writable_dirs=tuple(writable_dirs),
         launcher_directory=launcher_directory_path,
+        default_git_metadata_access=git_metadata_access,
     )
 
 

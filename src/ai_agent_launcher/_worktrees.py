@@ -11,7 +11,7 @@ from ai_agent_launcher._config import LauncherConfig
 from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._launchers import validate_launcher_creation_inputs
 from ai_agent_launcher._lifecycle import LauncherLifecycle
-from ai_agent_launcher._models import AgentId
+from ai_agent_launcher._models import AgentId, GitMetadataAccess
 from ai_agent_launcher._runtime import resolve_worktree
 
 
@@ -41,6 +41,7 @@ class WorktreeLifecycle:
         marker: str,
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
+        git_metadata_access: GitMetadataAccess | None,
     ) -> CreatedWorktree:
         """Create one explicit target worktree from a primary-worktree ref."""
         source = resolve_worktree(None)
@@ -64,6 +65,7 @@ class WorktreeLifecycle:
             marker,
             preparation,
             local_writable_dirs,
+            git_metadata_access,
         )
 
     def stack(
@@ -73,6 +75,7 @@ class WorktreeLifecycle:
         marker: str,
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
+        git_metadata_access: GitMetadataAccess | None,
     ) -> CreatedWorktree:
         """Create strict sibling targets from the current attached worktree HEAD."""
         self._validate_suffix(suffix)
@@ -97,6 +100,7 @@ class WorktreeLifecycle:
             marker,
             preparation,
             local_writable_dirs,
+            git_metadata_access,
         )
 
     def _create(
@@ -110,6 +114,7 @@ class WorktreeLifecycle:
         marker: str,
         preparation: Path | None,
         local_writable_dirs: tuple[str, ...],
+        git_metadata_access: GitMetadataAccess | None,
     ) -> CreatedWorktree:
         created = False
         try:
@@ -132,6 +137,7 @@ class WorktreeLifecycle:
                 marker,
                 preparation,
                 local_writable_dirs,
+                git_metadata_access,
             )
         except LauncherError:
             if created:
