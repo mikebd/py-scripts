@@ -210,6 +210,27 @@ def test_launcher_lifecycle_rejects_existing_fork_target_before_preparation_or_f
     assert adapter.observed_fork is None
 
 
+def test_launcher_lifecycle_rejects_dangling_symlink_fork_target_before_fork(
+    tmp_path: Path,
+) -> None:
+    worktree = _git_worktree(tmp_path)
+    source = tmp_path / "source-launcher"
+    target = tmp_path / "target-launcher"
+    target.symlink_to(tmp_path / "missing-launcher")
+    adapter = FakeSessionLifecycleAdapter(
+        forked_session=SessionReference(AgentId("fake"), "child-session")
+    )
+    lifecycle, _ = _lifecycle(adapter)
+    lifecycle.create(adapter.identifier, source, worktree, "# generated launcher", None, ())
+    lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
+
+    with pytest.raises(LauncherError, match="launcher path already exists"):
+        lifecycle.fork(source, target, adapter.identifier, (), ())
+
+    assert target.is_symlink()
+    assert adapter.observed_fork is None
+
+
 def test_launcher_lifecycle_rejects_unusable_fork_target_before_fork(tmp_path: Path) -> None:
     worktree = _git_worktree(tmp_path)
     source = tmp_path / "source-launcher"

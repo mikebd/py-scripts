@@ -450,7 +450,7 @@ def _atomic_write(path: Path, content: str, mode: int) -> None:
 def _prepare_launcher_target(path_argument: str | Path, *, replace: bool) -> Path:
     """Validate target occupancy and ensure its parent directory exists."""
     path = Path(path_argument).expanduser()
-    if path.exists() and not replace:
+    if (path.exists() or path.is_symlink()) and not replace:
         raise LauncherError(f"launcher path already exists: {path}")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
