@@ -248,8 +248,9 @@ def test_run_rejects_missing_explicit_writable_directory(
 
 
 def test_run_rejects_nonexistent_worktree_without_creating_it(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     missing_worktree = tmp_path / "missing-worktree"
 
     assert (
@@ -268,7 +269,11 @@ def test_run_rejects_nonexistent_worktree_without_creating_it(
     assert "worktree is not a directory" in capsys.readouterr().err
 
 
-def test_run_requires_separator_for_passthrough(git_worktree: Path) -> None:
+def test_run_requires_separator_for_passthrough(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
     with pytest.raises(SystemExit, match="2"):
         main(
             [

@@ -29,11 +29,15 @@ def test_empty_xdg_config_home_uses_conventional_default(monkeypatch: pytest.Mon
 
 def test_configuration_parses_core_and_selected_agent(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
+    writable_dir = tmp_path / "writable"
+    launcher_dir = tmp_path / "launchers"
+    writable_dir.mkdir()
+    launcher_dir.mkdir()
     config_path.write_text(
-        """
+        f"""
 [core]
-writable_dirs = ["/tmp/one"]
-launcher_directory = "/tmp/launchers"
+writable_dirs = ["{writable_dir}"]
+launcher_directory = "{launcher_dir}"
 default_git_metadata_access = "shared"
 
 [agents.codex]
@@ -44,8 +48,8 @@ model = "test-model"
 
     config = load_config(config_path, (AgentId("codex"),))
 
-    assert config.core.writable_dirs == ("/tmp/one",)
-    assert config.core.launcher_directory == Path("/tmp/launchers")
+    assert config.core.writable_dirs == (str(writable_dir),)
+    assert config.core.launcher_directory == launcher_dir.resolve()
     assert config.core.default_git_metadata_access is GitMetadataAccess.SHARED
     assert config.agent_settings[AgentId("codex")] == {"model": "test-model"}
 
