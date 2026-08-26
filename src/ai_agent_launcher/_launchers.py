@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shlex
 import stat
 import tempfile
 from contextlib import suppress
@@ -190,6 +191,7 @@ def write_launcher(
             metadata.marker,
             _INSPECTION_HINT,
             f"{_METADATA_PREFIX}{encoded}",
+            f"cd {shlex.quote(str(metadata.worktree_dir))}",
             'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"',
             "",
         )

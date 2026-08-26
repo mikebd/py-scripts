@@ -115,6 +115,9 @@ uv run ai-agent-launcher launcher describe --launcher /path/to/launcher
 
 This diagnoses a launcher artifact but does not make that launcher executable;
 persistent launchers still require an installed `ai-agent-launcher` on `PATH`.
+When a generated launcher runs, it changes to its stored worktree before
+delegating to the installed runtime. This keeps the launched agent and terminal
+multiplexer panes created from it in the selected worktree.
 
 ## Create a worktree from another checkout
 

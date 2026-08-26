@@ -1187,10 +1187,16 @@ def test_describe_rejects_non_generated_launcher(
 def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Path) -> None:
     launcher = tmp_path / "launcher"
     capture = tmp_path / "capture"
+    working_directory = tmp_path / "working-directory"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     command = bin_dir / "ai-agent-launcher"
-    command.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$LAUNCHER_CAPTURE"\n', encoding="utf-8")
+    command.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' \"$@\" > \"$LAUNCHER_CAPTURE\"\n"
+        "printf '%s\\n' \"$PWD\" > \"$LAUNCHER_WORKING_DIRECTORY\"\n",
+        encoding="utf-8",
+    )
     command.chmod(0o755)
     assert (
         main(
@@ -1213,6 +1219,7 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
     environment = os.environ | {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "LAUNCHER_CAPTURE": str(capture),
+        "LAUNCHER_WORKING_DIRECTORY": str(working_directory),
     }
     subprocess.run(["/bin/sh", str(launcher), "continue"], check=True, env=environment)
 
@@ -1224,6 +1231,7 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
         "--",
         "continue",
     ]
+    assert working_directory.read_text(encoding="utf-8").strip() == str(git_worktree)
 
 
 def test_run_uses_pinned_session_through_codex_adapter(
