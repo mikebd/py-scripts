@@ -87,7 +87,7 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
     preparation.write_text('#!/bin/sh\nprintf "%s" "$2" > "$PREPARED_OUTPUT"\n', encoding="utf-8")
     preparation.chmod(0o755)
     monkeypatch.setenv("PREPARED_OUTPUT", str(prepared))
-    monkeypatch.chdir(source)
+    monkeypatch.chdir(tmp_path)
 
     default_target = tmp_path / "new-default"
     assert (
@@ -101,6 +101,8 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
                 "codex",
                 "--worktree-dir",
                 str(default_target),
+                "--source-worktree-dir",
+                str(source),
                 "--branch",
                 "feature/new-default",
                 "--marker",
@@ -134,6 +136,8 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
                 "codex",
                 "--worktree-dir",
                 str(explicit_target),
+                "--source-worktree-dir",
+                str(source),
                 "--from",
                 "feature/source",
                 "--launcher",
@@ -384,6 +388,43 @@ def test_new_rejects_invalid_start_ref_before_creating_targets(
     )
     assert not target.exists()
     assert _git(primary_worktree, "branch", "--list", "feature/missing-ref") == ""
+
+
+def test_new_rejects_invalid_source_worktree_before_creating_targets(
+    primary_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = tmp_path / "config.toml"
+    _config(config, tmp_path / "launchers")
+    target = tmp_path / "missing-source"
+    monkeypatch.chdir(primary_worktree)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config),
+                "worktree",
+                "new",
+                "--agent",
+                "codex",
+                "--worktree-dir",
+                str(target),
+                "--source-worktree-dir",
+                str(tmp_path / "missing-source-worktree"),
+                "--branch",
+                "feature/missing-source",
+                "--marker",
+                "# generated launcher",
+            ]
+        )
+        == 2
+    )
+    assert "worktree is not a directory" in capsys.readouterr().err
+    assert not target.exists()
+    assert _git(primary_worktree, "branch", "--list", "feature/missing-source") == ""
 
 
 def test_new_rolls_back_owned_resources_and_preserves_external_launcher(

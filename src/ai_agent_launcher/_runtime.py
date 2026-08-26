@@ -19,7 +19,7 @@ class RunContext:
     git_metadata_access: GitMetadataAccess = GitMetadataAccess.WORKTREE
 
 
-def resolve_worktree(worktree_argument: str | None) -> Path:
+def resolve_worktree(worktree_argument: str | Path | None) -> Path:
     """Resolve an existing directory to the top-level directory of its Git worktree."""
     candidate = Path.cwd() if worktree_argument is None else Path(worktree_argument).expanduser()
     if not candidate.is_dir():

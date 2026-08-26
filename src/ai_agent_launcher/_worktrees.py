@@ -42,9 +42,10 @@ class WorktreeLifecycle:
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
+        source_worktree_argument: Path | None = None,
     ) -> CreatedWorktree:
-        """Create one explicit target worktree from a primary-worktree ref."""
-        source = resolve_worktree(None)
+        """Create one explicit target worktree from a selected repository's primary ref."""
+        source = resolve_worktree(source_worktree_argument)
         primary = self._primary_worktree(source)
         target = self._target_worktree(worktree_argument)
         target_branch = branch or target.name

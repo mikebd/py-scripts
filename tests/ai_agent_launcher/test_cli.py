@@ -126,6 +126,14 @@ def test_strict_stack_help_omits_target_overrides(capsys: pytest.CaptureFixture[
     assert "--launcher" not in help_text
     assert "--branch" not in help_text
     assert "--from" not in help_text
+    assert "--source-worktree-dir" not in help_text
+
+
+def test_new_help_includes_source_worktree_dir(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["worktree", "new", "--help"])
+
+    assert "--source-worktree-dir" in capsys.readouterr().out
 
 
 def test_suffix_normalization_leaves_non_worktree_passthrough_unchanged() -> None:

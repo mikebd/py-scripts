@@ -263,6 +263,7 @@ def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
             namespace.preparation_path,
             tuple(namespace.requested_writable_dirs),
             _optional_git_metadata_access(namespace.git_metadata_access),
+            namespace.source_worktree_dir,
         )
     elif namespace.worktree_command == "stack":
         result = worktrees.stack(
@@ -357,6 +358,11 @@ def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     )
     new.add_argument("--agent", choices=agent_choices, required=True)
     new.add_argument("--worktree-dir", type=Path, required=True)
+    new.add_argument(
+        "--source-worktree-dir",
+        type=Path,
+        help="select the repository from this Git worktree (default: current directory)",
+    )
     new.add_argument("--branch")
     new.add_argument("--from", dest="from_ref")
     new.add_argument("--launcher", type=Path)
