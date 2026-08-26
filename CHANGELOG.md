@@ -23,9 +23,9 @@ may be corrected when needed.
 ### Fixed
 
 - The Codex adapter omits a configured writable root when it would overlap
-  automatic Git metadata for the launched worktree, avoiding invalid nested
-  Bubblewrap writable roots while retaining configured roots for unrelated
-  worktrees.
+  automatic Git metadata for the launched worktree, avoiding incompatible
+  nested writable roots in the Codex sandbox while retaining configured roots
+  for unrelated worktrees.
 
 ## [v0.1.1] - 2026-08-26
 
