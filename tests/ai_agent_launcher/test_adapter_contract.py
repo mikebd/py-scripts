@@ -122,6 +122,20 @@ def test_launcher_lifecycle_delegates_generic_metadata_to_runtime_adapter(tmp_pa
     assert passthrough_args == ("continue", "--quiet")
 
 
+def test_launcher_lifecycle_rejects_mode_updates_without_sandbox_capability(tmp_path: Path) -> None:
+    worktree = _git_worktree(tmp_path)
+    launcher = tmp_path / "launcher"
+    adapter = FakeRuntimeAdapter()
+    lifecycle, _ = _lifecycle(adapter)
+    lifecycle.create(adapter.identifier, launcher, worktree, "# generated launcher", None, ())
+    original = launcher.read_bytes()
+
+    with pytest.raises(LauncherError, match="does not support persisted launcher sandbox settings"):
+        lifecycle.sandbox(launcher, "read-only", ())
+
+    assert launcher.read_bytes() == original
+
+
 def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) -> None:
     worktree = _git_worktree(tmp_path)
     source = tmp_path / "source-launcher"

@@ -96,6 +96,17 @@ class CodexAdapter:
         """Return the adapter's stable agent identifier."""
         return _CODEX_IDENTIFIER
 
+    @property
+    def launcher_sandbox_modes(self) -> tuple[str, ...]:
+        """Return Codex modes accepted for persisted launcher overrides."""
+        return _SANDBOX_MODES
+
+    def validate_launcher_sandbox_mode(self, mode: str) -> None:
+        """Reject a sandbox mode unavailable in the installed Codex adapter."""
+        if mode not in _SANDBOX_MODES:
+            choices = ", ".join(_SANDBOX_MODES)
+            raise LauncherError(f"Codex sandbox mode must be one of: {choices}")
+
     def configure_run_parser(self, parser: argparse.ArgumentParser) -> None:
         """Register options that only the Codex adapter understands."""
         group = parser.add_argument_group("Codex options")
@@ -146,7 +157,7 @@ class CodexAdapter:
             fork_session_id=None,
             model=None,
             reasoning_effort=None,
-            sandbox=None,
+            sandbox=self._launcher_sandbox_mode(context),
         )
         launcher_context = RunContext(
             worktree_dir=context.worktree_dir,
@@ -156,6 +167,23 @@ class CodexAdapter:
             git_metadata_access=context.git_metadata_access,
         )
         return self.run(launcher_context, settings_values, arguments)
+
+    def _launcher_sandbox_mode(self, context: RunContext) -> str | None:
+        """Return the optional persisted Codex sandbox override from launcher metadata."""
+        extensions = context.launcher_extensions
+        if extensions is None:
+            return None
+        settings = extensions.get(str(self.identifier))
+        if settings is None or "sandbox" not in settings:
+            return None
+        sandbox = settings["sandbox"]
+        if not isinstance(sandbox, str):
+            raise LauncherError("launcher metadata has an invalid codex.sandbox")
+        try:
+            self.validate_launcher_sandbox_mode(sandbox)
+        except LauncherError as error:
+            raise LauncherError("launcher metadata has an invalid codex.sandbox") from error
+        return sandbox
 
     def resolve_writable_dirs(
         self,

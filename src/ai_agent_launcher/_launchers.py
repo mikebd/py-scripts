@@ -227,10 +227,19 @@ def with_git_metadata_access(
     metadata: LauncherMetadata, access: GitMetadataAccess
 ) -> LauncherMetadata:
     """Persist one explicit Git metadata access policy on a generated launcher."""
+    return with_metadata_extension(metadata, "core", "git_metadata_access", access.value)
+
+
+def with_metadata_extension(
+    metadata: LauncherMetadata,
+    namespace: str,
+    name: str,
+    value: MetadataExtensionValue,
+) -> LauncherMetadata:
+    """Return launcher metadata with one validated optional setting updated."""
     extensions = _copy_extensions(metadata.extensions) or {}
-    core = extensions.setdefault("core", {})
-    core["git_metadata_access"] = access.value
-    return replace(metadata, extensions=extensions)
+    extensions.setdefault(namespace, {})[name] = value
+    return replace(metadata, extensions=_validated_extensions(extensions))
 
 
 def launcher_git_metadata_access(
@@ -394,7 +403,7 @@ def _git_metadata_access_description(
     explicit = metadata.extensions is not None and "git_metadata_access" in metadata.extensions.get(
         "core", {}
     )
-    suffix = "" if explicit else " (implicit default)"
+    suffix = "" if explicit else " (default)"
     return f"git metadata access: {access.value}{suffix}"
 
 

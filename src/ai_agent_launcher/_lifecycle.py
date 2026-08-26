@@ -6,7 +6,11 @@ import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 
-from ai_agent_launcher._adapters import RuntimeAgentAdapter, SessionLifecycleAdapter
+from ai_agent_launcher._adapters import (
+    LauncherSandboxAdapter,
+    RuntimeAgentAdapter,
+    SessionLifecycleAdapter,
+)
 from ai_agent_launcher._config import LauncherConfig
 from ai_agent_launcher._errors import LauncherError
 from ai_agent_launcher._launchers import (
@@ -19,6 +23,7 @@ from ai_agent_launcher._launchers import (
     replace_session,
     with_git_metadata_access,
     with_local_directories,
+    with_metadata_extension,
     write_launcher,
 )
 from ai_agent_launcher._models import AgentId, GitMetadataAccess, SessionReference
@@ -97,6 +102,26 @@ class LauncherLifecycle:
         write_launcher(
             launcher,
             replace_session(metadata, session_id),
+            replace=True,
+            mode=launcher_mode(launcher),
+        )
+
+    def sandbox(
+        self,
+        launcher: Path,
+        mode: str | None,
+        additional_dirs: tuple[str, ...],
+    ) -> None:
+        """Atomically update persisted sandbox settings on one launcher."""
+        metadata = self._source(launcher, None)
+        updated = with_local_directories(metadata, additional_dirs)
+        if mode is not None:
+            adapter = self._sandbox_adapter(metadata.agent_id)
+            adapter.validate_launcher_sandbox_mode(mode)
+            updated = with_metadata_extension(updated, str(metadata.agent_id), "sandbox", mode)
+        write_launcher(
+            launcher,
+            updated,
             replace=True,
             mode=launcher_mode(launcher),
         )
@@ -189,6 +214,7 @@ class LauncherLifecycle:
             requested_writable_dirs=tuple(str(path) for path in metadata.local_writable_dirs),
             passthrough_args=passthrough_args,
             git_metadata_access=launcher_git_metadata_access(metadata),
+            launcher_extensions=metadata.extensions,
         )
 
     def _settings(self, agent_id: AgentId) -> Mapping[str, object]:
@@ -204,6 +230,14 @@ class LauncherLifecycle:
         adapter = self._registry.get(agent_id)
         if not isinstance(adapter, SessionLifecycleAdapter):
             raise LauncherError(f"agent does not support launcher sessions: {agent_id}")
+        return adapter
+
+    def _sandbox_adapter(self, agent_id: AgentId) -> LauncherSandboxAdapter:
+        adapter = self._registry.get(agent_id)
+        if not isinstance(adapter, LauncherSandboxAdapter):
+            raise LauncherError(
+                f"agent does not support persisted launcher sandbox settings: {agent_id}"
+            )
         return adapter
 
     def _run_preparation(self, metadata: LauncherMetadata) -> None:

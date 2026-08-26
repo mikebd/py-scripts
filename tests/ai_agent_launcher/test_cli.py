@@ -118,6 +118,19 @@ def test_launcher_help_lists_describe(capsys: pytest.CaptureFixture[str]) -> Non
     assert "describe" in capsys.readouterr().out
 
 
+def test_launcher_sandbox_help_lists_persistent_update_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["launcher", "sandbox", "--help"])
+
+    help_text = capsys.readouterr().out
+    assert "--launcher" in help_text
+    assert "--mode" in help_text
+    assert "--add-dir" in help_text
+    assert "{danger-full-access,read-only,workspace-write}" in help_text
+
+
 def test_strict_stack_help_omits_target_overrides(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["worktree", "stack", "--help"])

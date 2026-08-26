@@ -68,6 +68,20 @@ class WritableDirectoryAdapter(AgentAdapter, Protocol):
         ...
 
 
+@runtime_checkable
+class LauncherSandboxAdapter(AgentAdapter, Protocol):
+    """Adapter capability for persisted sandbox-mode launcher overrides."""
+
+    @property
+    def launcher_sandbox_modes(self) -> tuple[str, ...]:
+        """Return modes accepted for this adapter's generated launchers."""
+        ...
+
+    def validate_launcher_sandbox_mode(self, mode: str) -> None:
+        """Reject a mode that this adapter cannot persist and later execute."""
+        ...
+
+
 @dataclass(frozen=True)
 class AgentSessionMetadata:
     """Agent-neutral session facts used by generated launcher lifecycle commands."""

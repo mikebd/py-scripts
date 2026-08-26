@@ -36,3 +36,4 @@ record.
 | [0002](0002-use-xdg-toml-configuration-with-core-and-agent-namespaces.md) | Accepted | Use XDG TOML configuration with core and agent namespaces. |
 | [0003](0003-use-versioned-self-describing-generated-launcher-artifacts.md) | Accepted | Use versioned self-describing generated launcher artifacts. |
 | [0004](0004-use-inspectable-optional-launcher-metadata-extensions.md) | Accepted | Use inspectable optional launcher metadata extensions. |
+| [0005](0005-use-adapter-owned-persisted-launcher-sandbox-overrides.md) | Accepted | Use adapter-owned persisted launcher sandbox overrides. |

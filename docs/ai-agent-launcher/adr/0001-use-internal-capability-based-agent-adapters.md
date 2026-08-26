@@ -58,4 +58,4 @@ None.
 
 ## Related ADRs
 
-None.
+- [0005: Use adapter-owned persisted launcher sandbox overrides](0005-use-adapter-owned-persisted-launcher-sandbox-overrides.md)

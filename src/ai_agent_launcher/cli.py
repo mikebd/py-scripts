@@ -11,7 +11,11 @@ from typing import Protocol
 
 import shtab
 
-from ai_agent_launcher._adapters import RuntimeAgentAdapter, WritableDirectoryAdapter
+from ai_agent_launcher._adapters import (
+    LauncherSandboxAdapter,
+    RuntimeAgentAdapter,
+    WritableDirectoryAdapter,
+)
 from ai_agent_launcher._config import load_config
 from ai_agent_launcher._defaults import default_registry
 from ai_agent_launcher._errors import LauncherError
@@ -160,6 +164,15 @@ def _launcher(
             namespace.session_id,
             _optional_agent(namespace.agent),
             namespace.replace,
+        )
+        return 0
+    if namespace.launcher_command == "sandbox":
+        if namespace.mode is None and not namespace.requested_writable_dirs:
+            parser.error("launcher sandbox requires --mode or --add-dir")
+        lifecycle.sandbox(
+            namespace.launcher,
+            namespace.mode,
+            tuple(namespace.requested_writable_dirs),
         )
         return 0
     if namespace.launcher_command == "fork":
@@ -335,6 +348,13 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     pin.add_argument("--agent", choices=agent_choices)
     pin.add_argument("--replace", action="store_true")
 
+    sandbox = launcher_commands.add_parser(
+        "sandbox", help="update persisted launcher sandbox settings"
+    )
+    sandbox.add_argument("--launcher", type=Path, required=True)
+    sandbox.add_argument("--mode", choices=_launcher_sandbox_modes(registry))
+    _add_directories_argument(sandbox)
+
     fork = launcher_commands.add_parser("fork", help="fork a pinned launcher session")
     _add_source_target_arguments(fork, agent_choices)
     _add_directories_argument(fork)
@@ -383,6 +403,17 @@ def _add_completion_parser(commands: _SubparserCommands) -> None:
 
 def _add_directories_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--add-dir", dest="requested_writable_dirs", action="append", default=[])
+
+
+def _launcher_sandbox_modes(registry: AgentRegistry) -> tuple[str, ...]:
+    """Return the stable union of adapter-owned persisted sandbox modes."""
+    modes = {
+        mode
+        for identifier in registry.identifiers
+        if isinstance(adapter := registry.get(identifier), LauncherSandboxAdapter)
+        for mode in adapter.launcher_sandbox_modes
+    }
+    return tuple(sorted(modes))
 
 
 def _add_worktree_launcher_options(parser: argparse.ArgumentParser) -> None:

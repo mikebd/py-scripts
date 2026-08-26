@@ -187,6 +187,32 @@ That guidance is a reference for this default, not a restriction on users who
 choose the less strict `shared` policy for an individual launcher or their
 configuration.
 
+### Persisted sandbox settings
+
+Use `launcher sandbox` to update an existing launcher's Codex sandbox mode,
+append launcher-local writable directories, or do both atomically:
+
+```bash
+ai-agent-launcher launcher sandbox \
+  --launcher /path/to/launcher \
+  --mode workspace-write \
+  --add-dir /path/to/writable-directory \
+  --add-dir /path/to/another-writable-directory
+```
+
+`--mode` accepts the sandbox modes supported by the selected agent adapter;
+the current Codex adapter supports `read-only`, `workspace-write`, and
+`danger-full-access`. `--add-dir` is repeatable. Each directory must already
+exist and is stored as a canonical absolute path; existing entries are
+preserved and duplicates are removed.
+
+At least one update is required: use `--mode`, one or more `--add-dir` values,
+or both. `--mode` is optional when only adding directories. The command
+preserves the launcher's session and other persisted settings, and does not
+start an agent. Without a persisted `--mode`, a launcher continues to use its
+current `[agents.codex].sandbox` configuration value. Use `launcher describe`
+to inspect a persisted override under `codex.sandbox`.
+
 ## Codex-specific behavior
 
 The Codex adapter adds writable directories that are needed by its
