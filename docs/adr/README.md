@@ -8,10 +8,10 @@ recovering the original planning conversation. This repository uses the
 ## Scope
 
 Records in this directory establish reusable repository-wide policy. A durable
-decision that applies only to one tool belongs in that tool's scoped
+decision that applies only to one component belongs in that component's scoped
 decision-record area and does not appear in this index. When a decision grows
-to affect multiple independent tools, record the repository-wide policy here
-and maintain reciprocal links to any materially related scoped records.
+to affect multiple independent components, record the repository-wide policy
+here and maintain reciprocal links to any materially related scoped records.
 
 ## Lifecycle
 
@@ -68,3 +68,4 @@ replace this repository's ADR conventions.
 | --- | --- | --- |
 | [0001](0001-use-static-parser-derived-shell-completion.md) | Accepted | Use static parser-derived shell completion. |
 | [0002](0002-use-git-tag-distribution-until-pypi-is-justified.md) | Accepted | Use Git-tag distribution until PyPI is justified. |
+| [0003](0003-use-repository-release-notes-for-tagged-distributions.md) | Accepted | Use repository release notes for tagged distributions. |

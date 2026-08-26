@@ -2,13 +2,14 @@
 
 These scoped architecture decision records preserve consequential choices that
 apply only to `ai-agent-launcher`. They do not establish policy for other
-tools in this repository.
+components in this repository.
 
 ## Relationship to repository ADRs
 
 The repository ADR directory, [`../../adr/README.md`](../../adr/README.md),
 is reserved for reusable repository-wide policy. Use this directory when a
-decision is durable for this tool but does not govern other independent tools.
+decision is durable for this component but does not govern other independent
+components.
 If a later decision becomes repository-wide, record that policy in the root
 ADR directory and add reciprocal related-record links where the relationship
 is material.

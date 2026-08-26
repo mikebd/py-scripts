@@ -3,25 +3,27 @@
 `ai-agent-launcher` creates and runs local AI coding-agent workspaces. The
 current supported adapter is `codex`; its runtime details remain adapter-owned.
 
-Its tool-specific durable choices are recorded in the
+Its component-specific durable choices are recorded in the
 [AI agent launcher decision records](adr/README.md).
 Repository-wide completion and distribution policy remains in
 [the repository ADR index](../adr/README.md).
 
 ## Agent runtime activation
 
-When configuring an AI coding agent to discover and select this tool, use the
+When configuring an AI coding agent to discover and select this command, use the
 [AI agent runtime activation guide](https://github.com/mikebd/ai-agent-skills/blob/main/shared/references/agent-runtime/AI_AGENT_LAUNCHER.md).
-It governs source selection, when an agent should prefer this tool, and how it
-uses runtime `--version` and `--help`. It is the canonical activation policy;
-this guide remains the tool's installation and usage reference.
+It governs source selection, when an agent should prefer this command, and how
+it uses runtime `--version` and `--help`. It is the canonical activation
+policy; this guide remains the command's installation and usage reference.
 
-## Install a tagged release for persistent launchers
+## Install the tagged distribution for persistent launchers
 
-This tool follows the repository's [Git-tag distribution default](../adr/0002-use-git-tag-distribution-until-pypi-is-justified.md),
-not PyPI. A generated launcher is a persistent shell shim: direct execution
+`ai-agent-launcher` is a command-line entry point of the `mikebd-py-scripts`
+distribution. That distribution follows the repository's [Git-tag distribution
+default](../adr/0002-use-git-tag-distribution-until-pypi-is-justified.md), not
+PyPI. A generated launcher is a persistent shell shim: direct execution
 requires `ai-agent-launcher` to be available on that process's `PATH`. Install
-the selected upstream release with:
+the selected upstream distribution release with:
 
 ```bash
 uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.1"
@@ -44,7 +46,8 @@ ai-agent-launcher --help
 ```
 
 To move to a selected newer tag, rerun `uv tool install --reinstall` with that
-tag. This replaces the installed tool with the requested source version.
+tag. This replaces the installed distribution with the requested source
+version.
 
 ## Direct CLI smoke test from an untagged checkout
 
@@ -58,7 +61,7 @@ uv run ai-agent-launcher --help
 Running `uv run ai-agent-launcher launcher create ...` does not install the
 command into the later generated launcher's `PATH`. Use the temporary
 installation below to test persistent-launcher behavior without replacing the
-normal installed tool.
+normal installed distribution.
 
 ## Temporarily install an untagged checkout
 
@@ -78,9 +81,9 @@ ai-agent-launcher --help
 
 Keep the temporary directory and its `PATH` entry for any generated-launcher
 smoke test. Remove the directory after restoring `PATH`. `make release-check`
-performs the corresponding temporary Git-tagged installation plus `--version`
-and `--help` checks automatically; it does not create or execute a generated
-launcher.
+validates the current release-note entry and performs the corresponding
+temporary Git-tagged distribution installation plus `--version` and `--help`
+checks automatically; it does not create or execute a generated launcher.
 
 ## Inspect a generated launcher
 
@@ -260,15 +263,19 @@ the reloaded completion index includes the newly generated file.
 
 ## Release procedure
 
-For a new release version:
+For a new distribution release:
 
-1. Update `project.version` in `pyproject.toml`.
-2. Run `make release-check`.
-3. Commit and push the reviewed product change.
-4. Create and push an annotated matching Git tag, for example
-   `git tag -a v0.1.1 -m "ai-agent-launcher v0.1.1"` followed by
-   `git push origin v0.1.1`.
-5. Repeat the install and `--version` smoke test against the public tag in an
+1. Maintain the matching Draft entry in the root [changelog](../../CHANGELOG.md)
+   while the release scope changes.
+2. Finalize that entry with the release date, affected command-line entry
+   points, and externally meaningful changes.
+3. Update `project.version` in `pyproject.toml`.
+4. Run `make release-check`.
+5. Commit and push the reviewed product change.
+6. Create and push an annotated matching Git tag, for example
+   `git tag -a v0.1.2 -m "mikebd-py-scripts v0.1.2"` followed by
+   `git push origin v0.1.2`.
+7. Repeat the install and `--version` smoke test against the public tag in an
    isolated UV tool directory.
 
 No PyPI upload or GitHub Release object is part of this procedure.

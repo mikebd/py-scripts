@@ -30,6 +30,134 @@ def _add(path: Path, *relative_paths: str) -> None:
     subprocess.run(["git", "add", "--", *relative_paths], cwd=path, check=True)
 
 
+def _write_changelog(path: Path, contents: str) -> None:
+    (path / "CHANGELOG.md").write_text(contents, encoding="utf-8")
+
+
+def test_release_notes_accept_current_finalized_entry_with_future_draft(tmp_path: Path) -> None:
+    release_check = _release_check_module()
+    _write_changelog(
+        tmp_path,
+        """# Changelog
+
+## [v0.1.2] - Draft
+
+### Scope
+
+- `example`
+
+### Added
+
+- Draft change.
+
+## [v0.1.1] - 2026-08-26
+
+### Scope
+
+- `example`
+
+### Fixed
+
+- Released change.
+""",
+    )
+
+    release_check._validate_release_notes(tmp_path, "0.1.1")
+
+
+@pytest.mark.parametrize(
+    ("contents", "message"),
+    [
+        ("# Changelog\n", "do not contain v0.1.1"),
+        (
+            """# Changelog
+
+## [v0.1.1] - Draft
+
+### Scope
+
+- `example`
+
+### Added
+
+- Draft change.
+""",
+            "draft for current version",
+        ),
+        (
+            """# Changelog
+
+## [v0.1.1] - 2026-02-30
+
+### Scope
+
+- `example`
+
+### Added
+
+- Invalid calendar date.
+""",
+            "invalid date",
+        ),
+        (
+            """# Changelog
+
+## [v0.1.1] - 2026-08-26
+
+### Added
+
+- Missing scope.
+""",
+            "non-empty scope",
+        ),
+        (
+            """# Changelog
+
+## [v0.1.1] - 2026-08-26
+
+### Scope
+
+- `example`
+""",
+            "non-empty change category",
+        ),
+        (
+            """# Changelog
+
+## [v0.1.0] - 2026-08-25
+
+### Scope
+
+- `example`
+
+### Added
+
+- Older entry appears first.
+
+## [v0.1.1] - 2026-08-26
+
+### Scope
+
+- `example`
+
+### Added
+
+- Newer entry appears second.
+""",
+            "newest to oldest",
+        ),
+    ],
+)
+def test_release_notes_reject_invalid_current_entry(
+    tmp_path: Path, contents: str, message: str
+) -> None:
+    release_check = _release_check_module()
+    _write_changelog(tmp_path, contents)
+
+    with pytest.raises(RuntimeError, match=message):
+        release_check._validate_release_notes(tmp_path, "0.1.1")
+
+
 def test_snapshot_preserves_valid_relative_in_repository_symlink(tmp_path: Path) -> None:
     release_check = _release_check_module()
     source = _source_repository(tmp_path)
