@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from ai_agent_launcher import _codex
+from ai_agent_launcher._runtime import RunContext
 from ai_agent_launcher.cli import main
 
 
@@ -377,6 +378,37 @@ def test_linked_worktree_git_metadata_access_is_shared_only_when_requested(
     assert str(git_dir) in shared_arguments
     assert str(common_dir) in shared_arguments
 
+    _write_config(config_path, executable, home, primary)
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "run",
+                "--agent",
+                "codex",
+                "--worktree-dir",
+                str(linked),
+            ]
+        )
+        == 0
+    )
+    overlapping_arguments = json.loads(output.read_text(encoding="utf-8"))["argv"]
+    assert str(primary) not in overlapping_arguments
+    assert str(git_dir) in overlapping_arguments
+
+    adapter = _codex.CodexAdapter()
+    context = RunContext(linked, (str(primary),), (), ())
+    report = adapter.resolve_writable_dirs(context, {})
+    assert primary.resolve() not in report.directories
+    assert git_dir in report.directories
+    assert report.notes == (
+        "configured writable directory contains automatic Git metadata and is omitted: "
+        f"{primary.resolve()}",
+    )
+    assert adapter._writable_dirs(context) == report.directories
+
+    _write_config(config_path, executable, home, writable_dir, "shared")
     launcher = tmp_path / "launcher"
     assert (
         main(

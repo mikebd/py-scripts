@@ -193,21 +193,32 @@ class CodexAdapter:
         """Best-effort resolve Codex writable directories without creating cache paths."""
         directories: list[Path] = []
         notes: list[str] = []
+        configured_dirs: list[Path] = []
         for configured_dir in context.configured_writable_dirs:
             _append_existing_or_note(
-                directories, notes, configured_dir, "configured writable directory"
+                configured_dirs, notes, configured_dir, "configured writable directory"
             )
+        try:
+            git_dirs = self._git_dirs(context)
+        except LauncherError as error:
+            git_dirs = ()
+            notes.append(str(error))
+        for configured_dir in configured_dirs:
+            if _contains_automatic_git_directory(configured_dir, git_dirs):
+                notes.append(
+                    "configured writable directory contains automatic Git metadata and is omitted: "
+                    f"{configured_dir}"
+                )
+            else:
+                _append_unique(directories, configured_dir)
         for requested_dir in context.requested_writable_dirs:
             _append_existing_or_note(directories, notes, requested_dir, "--add-dir")
 
         context_dir = context.worktree_dir / ".context"
         if context_dir.is_dir():
             _append_unique(directories, context_dir.resolve())
-        try:
-            for git_dir in self._git_dirs(context):
-                _append_unique(directories, git_dir)
-        except LauncherError as error:
-            notes.append(str(error))
+        for git_dir in git_dirs:
+            _append_unique(directories, git_dir)
         cache_dirs, cache_notes = self._described_cache_dirs(context.worktree_dir)
         for cache_dir in cache_dirs:
             _append_unique(directories, cache_dir)
@@ -286,17 +297,18 @@ class CodexAdapter:
 
     def _writable_dirs(self, context: RunContext) -> tuple[Path, ...]:
         directories: list[Path] = []
+        git_dirs = self._git_dirs(context)
         for configured_dir in context.configured_writable_dirs:
-            _append_unique(
-                directories, _existing_directory(configured_dir, "configured writable directory")
-            )
+            directory = _existing_directory(configured_dir, "configured writable directory")
+            if not _contains_automatic_git_directory(directory, git_dirs):
+                _append_unique(directories, directory)
         for requested_dir in context.requested_writable_dirs:
             _append_unique(directories, _existing_directory(requested_dir, "--add-dir"))
 
         context_dir = context.worktree_dir / ".context"
         if context_dir.is_dir():
             _append_unique(directories, context_dir.resolve())
-        for git_dir in self._git_dirs(context):
+        for git_dir in git_dirs:
             _append_unique(directories, git_dir)
         for cache_dir in self._cache_dirs(context.worktree_dir):
             _append_unique(directories, cache_dir)
@@ -472,3 +484,8 @@ def _append_existing_or_note(
 def _append_unique(directories: list[Path], candidate: Path) -> None:
     if candidate not in directories:
         directories.append(candidate)
+
+
+def _contains_automatic_git_directory(directory: Path, git_dirs: tuple[Path, ...]) -> bool:
+    """Report whether a configured root would overlap an automatic Git metadata root."""
+    return any(directory != git_dir and git_dir.is_relative_to(directory) for git_dir in git_dirs)

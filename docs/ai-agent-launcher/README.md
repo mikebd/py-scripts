@@ -227,7 +227,7 @@ local sandbox and the tools it may run. They are in addition to the generic
 
 | Source | Inclusion condition | Runtime behavior |
 | --- | --- | --- |
-| `[core].writable_dirs` | Each configured path | Must already be an existing directory. |
+| `[core].writable_dirs` | Each configured path, except one that strictly contains automatic Git metadata for the launched worktree | Must already be an existing directory. The Codex adapter omits that overlapping configured root so Bubblewrap does not receive nested writable roots. Other configured roots remain available for unrelated worktrees. |
 | Launcher-local `--add-dir` entries | Each path stored in launcher metadata | Must already be an existing directory. |
 | `<worktree>/.context` | The directory exists | Added when present. |
 | Git directory | The launcher worktree has resolvable Git metadata | Adds the worktree-specific directory from `git rev-parse --git-dir`. |
@@ -236,12 +236,16 @@ local sandbox and the tools it may run. They are in addition to the generic
 | Go module cache | `go` is on `PATH`; path from `go env GOMODCACHE` | The reported cache directory is created when needed. |
 | GolangCI-Lint cache | `golangci-lint` is on `PATH` | Uses `$GOLANGCI_LINT_CACHE`, then `$XDG_CACHE_HOME/golangci-lint`, then `$HOME/.cache/golangci-lint`; the directory is created when needed. |
 
-Duplicates are removed. Runtime ordering remains adapter-owned: configured
+Duplicates are removed. The Codex adapter also omits a configured root that
+would strictly contain automatic Git metadata for the launched worktree; this
+avoids nested Bubblewrap writable roots while retaining configured roots for
+unrelated worktrees. Runtime ordering remains adapter-owned: configured
 directories, launcher-local directories, optional `.context`, Git metadata,
 then available tool caches. `ai-agent-launcher launcher describe` presents a
 sorted, best-effort view for diagnosis; it does not create caches, start an
-agent, or run launcher preparation. Unavailable configuration, worktree, Git,
-or tool sources appear as notes beside the stored launcher metadata.
+agent, or run launcher preparation. Unavailable or omitted configuration,
+worktree, Git, or tool sources appear as notes beside the stored launcher
+metadata.
 
 Only the configured and launcher-local inputs are agent-neutral. The automatic
 additions above are current Codex behavior and are not a contract for future

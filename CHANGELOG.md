@@ -20,6 +20,13 @@ may be corrected when needed.
 - `launcher sandbox` persists a Codex sandbox-mode override and can add or
   remove launcher-local writable directories on an existing launcher.
 
+### Fixed
+
+- The Codex adapter omits a configured writable root when it would overlap
+  automatic Git metadata for the launched worktree, avoiding invalid nested
+  Bubblewrap writable roots while retaining configured roots for unrelated
+  worktrees.
+
 ## [v0.1.1] - 2026-08-26
 
 ### Scope
