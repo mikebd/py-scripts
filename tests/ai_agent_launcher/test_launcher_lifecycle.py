@@ -242,8 +242,10 @@ def test_launcher_sandbox_updates_persisted_mode_and_directories(
     _config(config_path, executable, tmp_path / "home", sandbox="read-only")
     inherited = tmp_path / "inherited"
     added = tmp_path / "added"
+    removed = tmp_path / "removed"
     inherited.mkdir()
     added.mkdir()
+    removed.mkdir()
     launcher = tmp_path / "launcher"
     monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
     _disable_optional_cache_tools(monkeypatch)
@@ -265,6 +267,8 @@ def test_launcher_sandbox_updates_persisted_mode_and_directories(
                 "# launcher marker",
                 "--add-dir",
                 str(inherited),
+                "--add-dir",
+                str(removed),
             ]
         )
         == 0
@@ -286,6 +290,8 @@ def test_launcher_sandbox_updates_persisted_mode_and_directories(
                 str(inherited),
                 "--add-dir",
                 str(added),
+                "--remove-dir",
+                str(removed),
             ]
         )
         == 0
@@ -305,6 +311,7 @@ def test_launcher_sandbox_updates_persisted_mode_and_directories(
     assert main(["--config", str(config_path), "launcher", "run", "--launcher", str(launcher)]) == 0
     invocation = json.loads(output.read_text(encoding="utf-8"))
     assert invocation[:3] == ["resume", "--sandbox", "workspace-write"]
+    assert str(removed.resolve()) not in invocation
     assert invocation[-1] == "parent"
 
     assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
@@ -368,6 +375,223 @@ def test_launcher_sandbox_directory_update_retains_configured_mode(
     ]
 
 
+def test_launcher_sandbox_removes_stale_local_directories(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+                "--add-dir",
+                str(first),
+                "--add-dir",
+                str(second),
+            ]
+        )
+        == 0
+    )
+    first.rmdir()
+    second.rmdir()
+
+    with pytest.raises(LauncherError, match="launcher metadata is invalid"):
+        read_launcher(launcher)
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                str(first),
+                "--remove-dir",
+                str(second),
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == ()
+
+
+def test_launcher_sandbox_does_not_rewrite_for_unstored_removal(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    launcher = tmp_path / "launcher"
+    missing = tmp_path / "missing"
+    added = tmp_path / "added"
+    added.mkdir()
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    original = launcher.read_bytes()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                str(missing),
+            ]
+        )
+        == 0
+    )
+    assert launcher.read_bytes() == original
+    assert capsys.readouterr().err == (
+        f"warning: launcher-local writable directory is not stored: {missing.resolve()}\n"
+    )
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--add-dir",
+                str(added),
+                "--remove-dir",
+                str(missing),
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == (added.resolve(),)
+    assert capsys.readouterr().err == (
+        f"warning: launcher-local writable directory is not stored: {missing.resolve()}\n"
+    )
+
+
+def test_launcher_sandbox_rejects_conflicting_directory_updates_without_rewriting(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    launcher = tmp_path / "launcher"
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+            ]
+        )
+        == 0
+    )
+    original = launcher.read_bytes()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--add-dir",
+                str(directory),
+                "--remove-dir",
+                str(directory),
+            ]
+        )
+        == 2
+    )
+    assert launcher.read_bytes() == original
+
+
+def test_launcher_sandbox_preserves_invalid_stale_entries_not_removed(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    removed = tmp_path / "removed"
+    retained = tmp_path / "retained"
+    removed.mkdir()
+    retained.mkdir()
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--marker",
+                "# launcher marker",
+                "--add-dir",
+                str(removed),
+                "--add-dir",
+                str(retained),
+            ]
+        )
+        == 0
+    )
+    removed.rmdir()
+    retained.rmdir()
+    original = launcher.read_bytes()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                str(removed),
+            ]
+        )
+        == 2
+    )
+    assert launcher.read_bytes() == original
+
+
 def test_launcher_sandbox_rejects_empty_or_invalid_updates_without_rewriting(
     git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -418,6 +642,21 @@ def test_launcher_sandbox_rejects_empty_or_invalid_updates_without_rewriting(
                 str(launcher),
                 "--add-dir",
                 str(tmp_path / "missing"),
+            ]
+        )
+        == 2
+    )
+    assert launcher.read_bytes() == original
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                "relative",
             ]
         )
         == 2

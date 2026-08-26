@@ -128,6 +128,7 @@ def test_launcher_sandbox_help_lists_persistent_update_options(
     assert "--launcher" in help_text
     assert "--mode" in help_text
     assert "--add-dir" in help_text
+    assert "--remove-dir" in help_text
     assert "{danger-full-access,read-only,workspace-write}" in help_text
 
 

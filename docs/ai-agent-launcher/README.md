@@ -190,28 +190,34 @@ configuration.
 ### Persisted sandbox settings
 
 Use `launcher sandbox` to update an existing launcher's Codex sandbox mode,
-append launcher-local writable directories, or do both atomically:
+add or remove launcher-local writable directories, or combine those updates
+atomically:
 
 ```bash
 ai-agent-launcher launcher sandbox \
   --launcher /path/to/launcher \
   --mode workspace-write \
   --add-dir /path/to/writable-directory \
-  --add-dir /path/to/another-writable-directory
+  --remove-dir /path/to/no-longer-needed-directory
 ```
 
 `--mode` accepts the sandbox modes supported by the selected agent adapter;
 the current Codex adapter supports `read-only`, `workspace-write`, and
-`danger-full-access`. `--add-dir` is repeatable. Each directory must already
-exist and is stored as a canonical absolute path; existing entries are
-preserved and duplicates are removed.
+`danger-full-access`. `--add-dir` and `--remove-dir` are repeatable. Added
+directories must already exist and are stored as canonical absolute paths.
+Removal accepts an absolute path even when the stored directory has since been
+deleted, so it can repair stale launcher metadata.
 
-At least one update is required: use `--mode`, one or more `--add-dir` values,
-or both. `--mode` is optional when only adding directories. The command
-preserves the launcher's session and other persisted settings, and does not
-start an agent. Without a persisted `--mode`, a launcher continues to use its
-current `[agents.codex].sandbox` configuration value. Use `launcher describe`
-to inspect a persisted override under `codex.sandbox`.
+At least one update is required: use `--mode`, one or more `--add-dir` or
+`--remove-dir` values, or a combination. `--mode` is optional when only
+changing directories. A directory requested for removal but not stored in
+launcher-local metadata produces a warning and does not prevent other updates.
+The command preserves the launcher's session and other persisted settings, does
+not start an agent, and affects only future launcher invocations. Without a
+persisted `--mode`, a launcher continues to use its current
+`[agents.codex].sandbox` configuration value. Use `launcher describe` to
+inspect a persisted override under `codex.sandbox` and launcher-local
+directories.
 
 ## Codex-specific behavior
 

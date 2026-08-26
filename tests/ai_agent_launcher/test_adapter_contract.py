@@ -131,7 +131,7 @@ def test_launcher_lifecycle_rejects_mode_updates_without_sandbox_capability(tmp_
     original = launcher.read_bytes()
 
     with pytest.raises(LauncherError, match="does not support persisted launcher sandbox settings"):
-        lifecycle.sandbox(launcher, "read-only", ())
+        lifecycle.sandbox(launcher, "read-only", (), ())
 
     assert launcher.read_bytes() == original
 

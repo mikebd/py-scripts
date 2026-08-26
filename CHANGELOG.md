@@ -17,8 +17,8 @@ may be corrected when needed.
 
 - `worktree new --source-worktree-dir` selects a Git repository without
   requiring the command to run from that checkout.
-- `launcher sandbox` persists a Codex sandbox-mode override and additional
-  launcher-local writable directories on an existing launcher.
+- `launcher sandbox` persists a Codex sandbox-mode override and can add or
+  remove launcher-local writable directories on an existing launcher.
 
 ## [v0.1.1] - 2026-08-26
 

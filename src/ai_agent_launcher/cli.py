@@ -167,13 +167,23 @@ def _launcher(
         )
         return 0
     if namespace.launcher_command == "sandbox":
-        if namespace.mode is None and not namespace.requested_writable_dirs:
-            parser.error("launcher sandbox requires --mode or --add-dir")
-        lifecycle.sandbox(
+        if (
+            namespace.mode is None
+            and not namespace.requested_writable_dirs
+            and not namespace.removed_writable_dirs
+        ):
+            parser.error("launcher sandbox requires --mode, --add-dir, or --remove-dir")
+        unmatched_removals = lifecycle.sandbox(
             namespace.launcher,
             namespace.mode,
             tuple(namespace.requested_writable_dirs),
+            tuple(namespace.removed_writable_dirs),
         )
+        for directory in unmatched_removals:
+            print(
+                f"warning: launcher-local writable directory is not stored: {directory}",
+                file=sys.stderr,
+            )
         return 0
     if namespace.launcher_command == "fork":
         _require_separator(namespace.agent_arguments, arguments, parser)
@@ -354,6 +364,7 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     sandbox.add_argument("--launcher", type=Path, required=True)
     sandbox.add_argument("--mode", choices=_launcher_sandbox_modes(registry))
     _add_directories_argument(sandbox)
+    _remove_directories_argument(sandbox)
 
     fork = launcher_commands.add_parser("fork", help="fork a pinned launcher session")
     _add_source_target_arguments(fork, agent_choices)
@@ -403,6 +414,10 @@ def _add_completion_parser(commands: _SubparserCommands) -> None:
 
 def _add_directories_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--add-dir", dest="requested_writable_dirs", action="append", default=[])
+
+
+def _remove_directories_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--remove-dir", dest="removed_writable_dirs", action="append", default=[])
 
 
 def _launcher_sandbox_modes(registry: AgentRegistry) -> tuple[str, ...]:

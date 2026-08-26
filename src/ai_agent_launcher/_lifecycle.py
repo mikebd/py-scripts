@@ -20,7 +20,9 @@ from ai_agent_launcher._launchers import (
     launcher_mode,
     preflight_launcher_target,
     read_launcher,
+    read_launcher_artifact,
     replace_session,
+    update_local_directories,
     with_git_metadata_access,
     with_local_directories,
     with_metadata_extension,
@@ -111,20 +113,26 @@ class LauncherLifecycle:
         launcher: Path,
         mode: str | None,
         additional_dirs: tuple[str, ...],
-    ) -> None:
+        removed_dirs: tuple[str, ...],
+    ) -> tuple[Path, ...]:
         """Atomically update persisted sandbox settings on one launcher."""
-        metadata = self._source(launcher, None)
-        updated = with_local_directories(metadata, additional_dirs)
+        artifact = read_launcher_artifact(launcher)
+        updated, unmatched_removals, removed_stored_directory = update_local_directories(
+            artifact, additional_dirs, removed_dirs
+        )
         if mode is not None:
-            adapter = self._sandbox_adapter(metadata.agent_id)
+            adapter = self._sandbox_adapter(updated.agent_id)
             adapter.validate_launcher_sandbox_mode(mode)
-            updated = with_metadata_extension(updated, str(metadata.agent_id), "sandbox", mode)
+            updated = with_metadata_extension(updated, str(updated.agent_id), "sandbox", mode)
+        if mode is None and not additional_dirs and not removed_stored_directory:
+            return unmatched_removals
         write_launcher(
             launcher,
             updated,
             replace=True,
             mode=launcher_mode(launcher),
         )
+        return unmatched_removals
 
     def fork(
         self,

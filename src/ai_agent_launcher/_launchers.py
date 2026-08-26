@@ -223,6 +223,36 @@ def with_local_directories(
     return replace(metadata, local_writable_dirs=_canonical_directories(merged))
 
 
+def update_local_directories(
+    artifact: LauncherArtifactMetadata,
+    additional_dirs: tuple[str, ...],
+    removed_dirs: tuple[str, ...],
+) -> tuple[LauncherMetadata, tuple[Path, ...], bool]:
+    """Update persisted local directories and report requested entries not stored."""
+    additions = _canonical_directories(additional_dirs)
+    removals = _canonical_removal_directories(removed_dirs)
+    overlap = set(additions).intersection(removals)
+    if overlap:
+        paths = ", ".join(str(path) for path in sorted(overlap))
+        raise LauncherError(f"launcher local directory cannot be both added and removed: {paths}")
+
+    stored = tuple(path.resolve(strict=False) for path in artifact.local_writable_dirs)
+    stored_set = set(stored)
+    unmatched = tuple(path for path in removals if path not in stored_set)
+    retained = tuple(path for path in stored if path not in removals)
+    merged = tuple(str(path) for path in retained + additions)
+    metadata = build_metadata(
+        artifact.agent_id,
+        artifact.worktree_dir,
+        artifact.marker,
+        artifact.preparation_path,
+        merged,
+        artifact.session.value if artifact.session is not None else None,
+        artifact.extensions,
+    )
+    return metadata, unmatched, bool(stored_set.intersection(removals))
+
+
 def with_git_metadata_access(
     metadata: LauncherMetadata, access: GitMetadataAccess
 ) -> LauncherMetadata:
@@ -391,6 +421,19 @@ def _canonical_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
                 f"launcher local directory is not an absolute existing directory: {path}"
             )
         resolved = path.resolve()
+        if resolved not in directories:
+            directories.append(resolved)
+    return tuple(directories)
+
+
+def _canonical_removal_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
+    """Return unique absolute removal paths without requiring their existence."""
+    directories: list[Path] = []
+    for value in values:
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise LauncherError(f"launcher local directory removal is not an absolute path: {path}")
+        resolved = path.resolve(strict=False)
         if resolved not in directories:
             directories.append(resolved)
     return tuple(directories)
