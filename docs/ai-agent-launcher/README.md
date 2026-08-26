@@ -8,6 +8,14 @@ Its tool-specific durable choices are recorded in the
 Repository-wide completion and distribution policy remains in
 [the repository ADR index](../adr/README.md).
 
+## Agent runtime activation
+
+When configuring an AI coding agent to discover and select this tool, use the
+[AI agent runtime activation guide](https://github.com/mikebd/ai-agent-skills/blob/main/shared/references/agent-runtime/AI_AGENT_LAUNCHER.md).
+It governs source selection, when an agent should prefer this tool, and how it
+uses runtime `--version` and `--help`. It is the canonical activation policy;
+this guide remains the tool's installation and usage reference.
+
 ## Install a tagged release for persistent launchers
 
 This tool follows the repository's [Git-tag distribution default](../adr/0002-use-git-tag-distribution-until-pypi-is-justified.md),
@@ -16,13 +24,13 @@ requires `ai-agent-launcher` to be available on that process's `PATH`. Install
 the selected upstream release with:
 
 ```bash
-uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.0"
+uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.1"
 ```
 
 For a fork, replace the repository URL and keep the selected tag:
 
 ```bash
-uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.0"
+uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.1"
 ```
 
 Ensure the UV tool binary directory is on `PATH`. You may run
@@ -238,8 +246,8 @@ For a new release version:
 2. Run `make release-check`.
 3. Commit and push the reviewed product change.
 4. Create and push an annotated matching Git tag, for example
-   `git tag -a v0.1.0 -m "ai-agent-launcher v0.1.0"` followed by
-   `git push origin v0.1.0`.
+   `git tag -a v0.1.1 -m "ai-agent-launcher v0.1.1"` followed by
+   `git push origin v0.1.1`.
 5. Repeat the install and `--version` smoke test against the public tag in an
    isolated UV tool directory.
 

@@ -151,7 +151,13 @@ def test_help_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["--help"])
 
-    assert "usage: ai-agent-launcher" in capsys.readouterr().out
+    help_text = capsys.readouterr().out
+    assert "usage: ai-agent-launcher" in help_text
+    assert "Agent runtime activation guide:" in help_text
+    assert (
+        "https://github.com/mikebd/ai-agent-skills/blob/main/"
+        "shared/references/agent-runtime/AI_AGENT_LAUNCHER.md"
+    ) in help_text
 
 
 def test_version_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None:

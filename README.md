@@ -44,7 +44,9 @@ alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
 Creates and runs local AI coding-agent workspaces through an agent-neutral
 core. The current supported adapter is `codex`. See the
 [AI agent launcher guide](docs/ai-agent-launcher/README.md) for tagged installation,
-configuration, and release guidance.
+configuration, and release guidance. For AI-agent discovery, source selection,
+and runtime-help usage, see the
+[AI agent runtime activation guide](https://github.com/mikebd/ai-agent-skills/blob/main/shared/references/agent-runtime/AI_AGENT_LAUNCHER.md).
 
 ### Brew Diff (`brew_diff <remote_host>`)
 

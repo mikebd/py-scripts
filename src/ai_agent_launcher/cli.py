@@ -27,6 +27,10 @@ from ai_agent_launcher._runtime import RunContext, resolve_worktree
 from ai_agent_launcher._worktrees import CreatedWorktree, WorktreeLifecycle
 
 _DISTRIBUTION_NAME = "mikebd-py-scripts"
+_AGENT_RUNTIME_ACTIVATION_GUIDE_URL = (
+    "https://github.com/mikebd/ai-agent-skills/blob/main/"
+    "shared/references/agent-runtime/AI_AGENT_LAUNCHER.md"
+)
 _COMPLETION_SHELLS = tuple(sorted(shtab.SUPPORTED_SHELLS))
 
 
@@ -52,6 +56,8 @@ def build_parser(registry: AgentRegistry) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ai-agent-launcher",
         description="Launch and manage local AI coding-agent workspaces.",
+        epilog=f"Agent runtime activation guide: {_AGENT_RUNTIME_ACTIVATION_GUIDE_URL}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--config", type=Path, metavar="PATH")
     parser.add_argument("--version", action="version", version=distribution_version())
