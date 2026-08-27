@@ -136,6 +136,23 @@ def test_launcher_creation_help_omits_marker(
     assert "--marker" not in capsys.readouterr().out
 
 
+def test_launcher_create_help_lists_session_id(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["launcher", "create", "--help"])
+
+    assert "--session-id" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ("new", "stack"))
+def test_worktree_creation_help_omits_session_id(
+    command: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["worktree", command, "--help"])
+
+    assert "--session-id" not in capsys.readouterr().out
+
+
 def test_launcher_create_rejects_removed_marker_option(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="2"):
         main(

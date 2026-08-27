@@ -17,6 +17,11 @@ repository applies its own scoped release-note policy.
 
 - `ai-agent-launcher`
 
+### Added
+
+- `ai-agent-launcher launcher create --session-id` atomically creates a
+  launcher pinned to a known existing session without a separate pin command.
+
 ### Changed
 
 - Preparation helpers are best-effort runtime workspace setup. Relative helper

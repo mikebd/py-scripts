@@ -51,15 +51,17 @@ class LauncherLifecycle:
         git_metadata_access: GitMetadataAccess | None = None,
         sandbox_mode: str | None = None,
         *,
+        session_id: str | None = None,
         validate_preparation: bool = True,
     ) -> Path:
-        """Create an initially unpinned launcher for an existing worktree."""
+        """Create a launcher for an existing worktree with an optional session reference."""
         self.validate_creation(agent_id, sandbox_mode)
         metadata = build_metadata(
             agent_id,
             worktree_dir,
             preparation_path,
             local_writable_dirs,
+            session_id=session_id,
             validate_preparation=validate_preparation,
         )
         access = git_metadata_access or self._config.core.default_git_metadata_access

@@ -119,6 +119,20 @@ When a generated launcher runs, it changes to its stored worktree before
 delegating to the installed runtime. This keeps the launched agent and terminal
 multiplexer panes created from it in the selected worktree.
 
+## Create a launcher for an existing session
+
+When an existing agent session should be the launcher's initial session, pass
+its opaque reference while creating the launcher:
+
+```bash
+ai-agent-launcher launcher create ... --session-id SESSION_ID
+```
+
+This atomically creates the same pinned launcher that `launcher create`
+followed by `launcher pin --session-id SESSION_ID` would produce. Creation does
+not look up or validate the session; use `launcher adopt` when the session must
+be validated against the launcher's worktree.
+
 ## Preparation helpers
 
 `--prepare PATH` records optional workspace setup for `launcher create`,

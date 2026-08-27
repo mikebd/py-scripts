@@ -109,8 +109,7 @@ def test_launcher_lifecycle_delegates_generic_metadata_to_runtime_adapter(tmp_pa
     identifier = adapter.identifier
     lifecycle, settings = _lifecycle(adapter)
 
-    lifecycle.create(identifier, launcher, worktree, None, ())
-    lifecycle.pin(launcher, "opaque-session", identifier, replace=False)
+    lifecycle.create(identifier, launcher, worktree, None, (), session_id="opaque-session")
 
     assert lifecycle.run(launcher, ("continue", "--quiet")) == 17
     assert adapter.observed is not None

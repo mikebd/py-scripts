@@ -218,6 +218,7 @@ def _launcher_create(namespace: argparse.Namespace, lifecycle: LauncherLifecycle
         tuple(namespace.requested_writable_dirs),
         _optional_git_metadata_access(namespace.git_metadata_access),
         namespace.sandbox_mode,
+        session_id=namespace.session_id,
     )
     return 0
 
@@ -337,6 +338,10 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     create.add_argument("--agent", choices=agent_choices, required=True)
     create.add_argument("--launcher", type=Path, required=True)
     create.add_argument("--worktree-dir", type=Path, required=True)
+    create.add_argument(
+        "--session-id",
+        help="store an existing opaque session reference in the new launcher",
+    )
     _add_preparation_argument(create)
     _add_directories_argument(create)
     _add_git_metadata_access_argument(create)

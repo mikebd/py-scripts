@@ -237,6 +237,75 @@ def test_create_and_pin_preserve_versioned_metadata(
     assert pinned.value == "two"
 
 
+def test_launcher_create_stores_initial_session_without_lookup(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    executable = _fake_codex(tmp_path)
+    config_path = tmp_path / "config.toml"
+    _config(config_path, executable, tmp_path / "home")
+    launcher = tmp_path / "launcher"
+    output = tmp_path / "fake-codex.json"
+    monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--session-id",
+                "existing-session",
+            ]
+        )
+        == 0
+    )
+    session = read_launcher(launcher).session
+    assert session is not None
+    assert session.value == "existing-session"
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "describe",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    assert "session: existing-session" in capsys.readouterr().out
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "run",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text(encoding="utf-8"))[0] == "resume"
+    assert json.loads(output.read_text(encoding="utf-8"))[-1] == "existing-session"
+
+
 def test_launcher_create_resolves_target_relative_preparation(
     git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
