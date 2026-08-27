@@ -11,7 +11,7 @@ Its human-facing, reverse-chronological structure and change categories are
 informed by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 repository applies its own scoped release-note policy.
 
-## [v0.1.3] - Draft
+## [v0.1.3] - 2026-08-27
 
 ### Scope
 
