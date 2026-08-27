@@ -7,7 +7,7 @@ it applies repository-wide, to one or more command-line entry points, or both.
 Draft entries are updated as their release scope changes. Published entries
 may be corrected when needed.
 
-## [v0.1.2] - Draft
+## [v0.1.2] - 2026-08-26
 
 ### Scope
 
