@@ -11,6 +11,19 @@ Its human-facing, reverse-chronological structure and change categories are
 informed by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 repository applies its own scoped release-note policy.
 
+## [v0.1.3] - Draft
+
+### Scope
+
+- `ai-agent-launcher`
+
+### Changed
+
+- Preparation helpers are best-effort runtime workspace setup. Relative helper
+  paths resolve from their target worktree, and later helper loss or failure
+  warns without blocking launcher execution, session forking, or worktree
+  creation.
+
 ## [v0.1.2] - 2026-08-26
 
 ### Scope

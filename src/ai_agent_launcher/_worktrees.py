@@ -52,7 +52,7 @@ class WorktreeLifecycle:
         self._validate_branch(target_branch)
         start_ref = self._resolve_commit(primary, from_ref or "HEAD")
         launcher = self._launcher_path(agent_id, target.name, launcher_argument)
-        preparation = validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
+        validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
         self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(primary, target, target_branch, launcher)
         return self._create(
@@ -62,7 +62,7 @@ class WorktreeLifecycle:
             target_branch,
             start_ref,
             launcher,
-            preparation,
+            preparation_argument,
             local_writable_dirs,
             git_metadata_access,
             sandbox_mode,
@@ -86,7 +86,7 @@ class WorktreeLifecycle:
         self._validate_branch(target_branch)
         start_ref = self._resolve_commit(source, "HEAD")
         launcher = self._launcher_path(agent_id, target.name, None)
-        preparation = validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
+        validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
         self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(source, target, target_branch, launcher)
         return self._create(
@@ -96,7 +96,7 @@ class WorktreeLifecycle:
             target_branch,
             start_ref,
             launcher,
-            preparation,
+            preparation_argument,
             local_writable_dirs,
             git_metadata_access,
             sandbox_mode,
@@ -110,7 +110,7 @@ class WorktreeLifecycle:
         branch: str,
         start_ref: str,
         launcher: Path,
-        preparation: Path | None,
+        preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
         sandbox_mode: str | None,
@@ -128,15 +128,16 @@ class WorktreeLifecycle:
                 start_ref,
             )
             created = True
-            self._launchers.prepare(target, preparation)
+            self._launchers.prepare(target, preparation_argument)
             rendered_launcher = self._launchers.create(
                 agent_id,
                 launcher,
                 target,
-                preparation,
+                preparation_argument,
                 local_writable_dirs,
                 git_metadata_access,
                 sandbox_mode,
+                validate_preparation=False,
             )
         except BaseException:
             if created:

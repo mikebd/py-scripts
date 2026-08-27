@@ -160,9 +160,18 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
 
 
 def test_stack_derives_strict_sibling_targets_from_committed_source_head(
-    primary_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    primary_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     source = _create_source_worktree(primary_worktree)
+    preparation = source / "scripts" / "prepare"
+    preparation.parent.mkdir()
+    preparation.write_text("#!/bin/sh\nexit 23\n", encoding="utf-8")
+    preparation.chmod(0o755)
+    _git(source, "add", "scripts/prepare")
+    _git(source, "commit", "-qm", "add preparation helper")
     committed_head = _git(source, "rev-parse", "HEAD")
     (source / "README.md").write_text("uncommitted\n", encoding="utf-8")
     launcher_directory = tmp_path / "launchers"
@@ -183,6 +192,8 @@ def test_stack_derives_strict_sibling_targets_from_committed_source_head(
                 "codex",
                 "--suffix",
                 "-child",
+                "--prepare",
+                "scripts/prepare",
                 "--add-dir",
                 str(local_directory),
                 "--sandbox-mode",
@@ -203,6 +214,14 @@ def test_stack_derives_strict_sibling_targets_from_committed_source_head(
         "codex": {"sandbox": "danger-full-access"},
         "core": {"git_metadata_access": "worktree"},
     }
+    assert metadata.preparation_path == (target / "scripts" / "prepare").resolve()
+    warning = (
+        "warning: launcher preparation failed; continuing: "
+        f"{metadata.preparation_path}: exit status 23"
+    )
+    assert (
+        warning in capsys.readouterr().err
+    )
 
 
 def test_new_rejects_collisions_without_creating_resources(
@@ -417,8 +436,11 @@ def test_new_rejects_invalid_source_worktree_before_creating_targets(
     assert _git(primary_worktree, "branch", "--list", "feature/missing-source") == ""
 
 
-def test_new_rolls_back_owned_resources_and_preserves_external_launcher(
-    primary_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_new_continues_after_preparation_failure_and_rolls_back_render_failure(
+    primary_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     launcher_directory = tmp_path / "launchers"
     config = tmp_path / "config.toml"
@@ -445,10 +467,21 @@ def test_new_rolls_back_owned_resources_and_preserves_external_launcher(
                 str(failing_preparation),
             ]
         )
-        == 2
+        == 0
     )
-    assert not failed_target.exists()
-    assert _git(primary_worktree, "branch", "--list", "feature/failed-prepare") == ""
+    failed_launcher = launcher_directory / "codex-failed-prepare"
+    assert failed_target.is_dir()
+    assert "feature/failed-prepare" in _git(
+        primary_worktree, "branch", "--list", "feature/failed-prepare"
+    )
+    assert read_launcher(failed_launcher).preparation_path == failing_preparation.resolve()
+    warning = (
+        "warning: launcher preparation failed; continuing: "
+        f"{failing_preparation.resolve()}: exit status 23"
+    )
+    assert (
+        warning in capsys.readouterr().err
+    )
 
     external_launcher = launcher_directory / "codex-failed-render"
     creating_preparation = tmp_path / "create-launcher"

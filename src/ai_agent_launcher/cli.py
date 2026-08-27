@@ -337,7 +337,7 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     create.add_argument("--agent", choices=agent_choices, required=True)
     create.add_argument("--launcher", type=Path, required=True)
     create.add_argument("--worktree-dir", type=Path, required=True)
-    create.add_argument("--prepare", dest="preparation_path", type=Path)
+    _add_preparation_argument(create)
     _add_directories_argument(create)
     _add_git_metadata_access_argument(create)
     _add_sandbox_mode_argument(create, registry)
@@ -445,7 +445,7 @@ def _launcher_sandbox_modes(registry: AgentRegistry) -> tuple[str, ...]:
 def _add_worktree_launcher_options(
     parser: argparse.ArgumentParser, registry: AgentRegistry
 ) -> None:
-    parser.add_argument("--prepare", dest="preparation_path", type=Path)
+    _add_preparation_argument(parser)
     _add_directories_argument(parser)
     _add_git_metadata_access_argument(parser)
     _add_sandbox_mode_argument(parser, registry)
@@ -456,6 +456,16 @@ def _add_git_metadata_access_argument(parser: argparse.ArgumentParser) -> None:
         "--git-metadata-access",
         choices=[access.value for access in GitMetadataAccess],
         help="persist Git metadata access for the generated launcher",
+    )
+
+
+def _add_preparation_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--prepare",
+        dest="preparation_path",
+        type=Path,
+        metavar="PATH",
+        help="run optional workspace preparation; relative paths resolve from the target worktree",
     )
 
 

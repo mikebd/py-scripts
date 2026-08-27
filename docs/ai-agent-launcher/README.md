@@ -119,6 +119,24 @@ When a generated launcher runs, it changes to its stored worktree before
 delegating to the installed runtime. This keeps the launched agent and terminal
 multiplexer panes created from it in the selected worktree.
 
+## Preparation helpers
+
+`--prepare PATH` records optional workspace setup for `launcher create`,
+`worktree new`, and `worktree stack`. The helper receives `--target` followed
+by the selected worktree path. An absolute path remains absolute; a relative
+path resolves from the selected target worktree, including normal `../...`
+traversal, and the generated launcher stores the resulting canonical absolute
+path.
+
+`launcher create` resolves its target worktree before writing a launcher, so
+its helper must already be an executable file. `worktree new` and `worktree
+stack` first create their Git worktree, then resolve and attempt the helper;
+this allows the helper to be tracked in the newly created worktree. At any
+later run or fork, unavailable, non-executable, or nonzero-exit helpers leave
+their own output visible, produce a warning, and do not block the agent or
+roll back an otherwise valid worktree. The helper remains configured and is
+retried on later operations after it is repaired.
+
 ## Create a worktree from another checkout
 
 `worktree new` normally selects the repository containing the current working

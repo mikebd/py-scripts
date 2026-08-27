@@ -23,6 +23,7 @@ from ai_agent_launcher._launchers import (
     read_launcher,
     read_launcher_artifact,
     replace_session,
+    resolve_preparation_path,
     update_local_directories,
     with_git_metadata_access,
     with_metadata_extension,
@@ -49,6 +50,8 @@ class LauncherLifecycle:
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None = None,
         sandbox_mode: str | None = None,
+        *,
+        validate_preparation: bool = True,
     ) -> Path:
         """Create an initially unpinned launcher for an existing worktree."""
         self.validate_creation(agent_id, sandbox_mode)
@@ -57,6 +60,7 @@ class LauncherLifecycle:
             worktree_dir,
             preparation_path,
             local_writable_dirs,
+            validate_preparation=validate_preparation,
         )
         access = git_metadata_access or self._config.core.default_git_metadata_access
         metadata = with_git_metadata_access(metadata, access)
@@ -80,8 +84,13 @@ class LauncherLifecycle:
             passthrough_args,
         )
 
-    def prepare(self, worktree_dir: Path, preparation_path: Path | None) -> None:
-        """Run one validated launcher preparation helper for a Git worktree."""
+    def prepare(self, worktree_dir: Path, preparation_argument: Path | None) -> None:
+        """Best-effort run one preparation helper for a Git worktree."""
+        preparation_path = resolve_preparation_path(
+            preparation_argument,
+            worktree_dir,
+            require_executable=False,
+        )
         if preparation_path is None:
             return
         try:
@@ -90,9 +99,13 @@ class LauncherLifecycle:
                 check=False,
             )
         except OSError as error:
-            raise LauncherError(f"unable to run launcher preparation: {error}") from error
+            self._warn_preparation_failure(preparation_path, str(error))
+            return
         if result.returncode != 0:
-            raise LauncherError(f"launcher preparation failed with exit status {result.returncode}")
+            self._warn_preparation_failure(
+                preparation_path,
+                f"exit status {result.returncode}",
+            )
 
     def pin(
         self,
@@ -284,6 +297,12 @@ class LauncherLifecycle:
                 f"warning: launcher-local writable directory is not stored: {directory}",
                 file=sys.stderr,
             )
+
+    def _warn_preparation_failure(self, preparation_path: Path, reason: str) -> None:
+        print(
+            f"warning: launcher preparation failed; continuing: {preparation_path}: {reason}",
+            file=sys.stderr,
+        )
 
     def _run_preparation(self, metadata: LauncherMetadata) -> None:
         self.prepare(metadata.worktree_dir, metadata.preparation_path)
