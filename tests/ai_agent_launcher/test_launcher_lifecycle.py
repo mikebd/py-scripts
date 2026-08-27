@@ -192,7 +192,7 @@ def test_create_and_pin_preserve_versioned_metadata(
     )
     assert launcher.stat().st_mode & 0o777 == 0o700
     content = launcher.read_text(encoding="utf-8")
-    assert 'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"' in content
+    assert 'exec ai-agent-launcher launcher run --launcher "$launcher_path" -- "$@"' in content
     assert (
         "# Inspect metadata with: ai-agent-launcher launcher describe "
         "--launcher <launcher-path>" in content
@@ -591,8 +591,11 @@ def test_launcher_sandbox_does_not_rewrite_for_unstored_removal(
     )
 
 
-def test_launcher_sandbox_rejects_conflicting_directory_updates_without_rewriting(
-    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_launcher_sandbox_rejects_invalid_directory_updates_without_rewriting(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     launcher = tmp_path / "launcher"
@@ -630,6 +633,28 @@ def test_launcher_sandbox_rejects_conflicting_directory_updates_without_rewritin
         )
         == 2
     )
+    assert launcher.read_bytes() == original
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                "~missing-user/path",
+            ]
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert (
+        "launcher local directory removal is not an absolute path: ~missing-user/path"
+        in captured.err
+    )
+    assert "Traceback" not in captured.err
     assert launcher.read_bytes() == original
 
 
@@ -1289,7 +1314,12 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
         "LAUNCHER_CAPTURE": str(capture),
         "LAUNCHER_WORKING_DIRECTORY": str(working_directory),
     }
-    subprocess.run(["/bin/sh", str(launcher), "continue"], check=True, env=environment)
+    subprocess.run(
+        ["/bin/sh", f"./{launcher.name}", "continue"],
+        check=True,
+        cwd=launcher.parent,
+        env=environment,
+    )
 
     assert capture.read_text(encoding="utf-8").splitlines() == [
         "launcher",

@@ -181,8 +181,12 @@ def write_launcher(
             "set -eu",
             _INSPECTION_HINT,
             f"{_METADATA_PREFIX}{encoded}",
+            'case "$0" in',
+            '  /*) launcher_path="$0" ;;',
+            '  *) launcher_path="$(CDPATH='' cd -P "$(dirname "$0")" && pwd)/$(basename "$0")" ;;',
+            "esac",
             f"cd {shlex.quote(str(metadata.worktree_dir))}",
-            'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"',
+            'exec ai-agent-launcher launcher run --launcher "$launcher_path" -- "$@"',
             "",
         )
     )
@@ -407,9 +411,12 @@ def _canonical_removal_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
     """Return unique absolute removal paths without requiring their existence."""
     directories: list[Path] = []
     for value in values:
-        path = Path(value).expanduser()
-        if not path.is_absolute():
-            raise LauncherError(f"launcher local directory removal is not an absolute path: {path}")
+        raw_path = Path(value)
+        if not raw_path.is_absolute():
+            raise LauncherError(
+                f"launcher local directory removal is not an absolute path: {raw_path}"
+            )
+        path = raw_path.expanduser()
         resolved = path.resolve(strict=False)
         if resolved not in directories:
             directories.append(resolved)
