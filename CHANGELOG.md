@@ -15,10 +15,14 @@ repository applies its own scoped release-note policy.
 
 ### Scope
 
+- repository release workflow
 - `ai-agent-launcher`
 
 ### Added
 
+- `make release-lock VERSION=X.Y.Z` finalizes a matching Draft entry, updates
+  release-version examples, validates the tagged distribution, commits the
+  bounded release state, and pushes only a safe one-commit-ahead branch.
 - `ai-agent-launcher launcher create --session-id` atomically creates a
   launcher pinned to a known existing session without a separate pin command.
 

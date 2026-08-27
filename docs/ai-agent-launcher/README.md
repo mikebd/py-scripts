@@ -16,6 +16,8 @@ It governs source selection, when an agent should prefer this command, and how
 it uses runtime `--version` and `--help`. It is the canonical activation
 policy; this guide remains the command's installation and usage reference.
 
+<!-- release-lock: current-version-examples:start -->
+
 ## Install the tagged distribution for persistent launchers
 
 `ai-agent-launcher` is a command-line entry point of the `mikebd-py-scripts`
@@ -44,6 +46,8 @@ Verify the installed executable with:
 ai-agent-launcher --version
 ai-agent-launcher --help
 ```
+
+<!-- release-lock: current-version-examples:end -->
 
 To move to a selected newer tag, rerun `uv tool install --reinstall` with that
 tag. This replaces the installed distribution with the requested source
@@ -348,15 +352,22 @@ For a new distribution release:
 
 1. Maintain the matching Draft entry in the root [changelog](../../CHANGELOG.md)
    while the release scope changes.
-2. Finalize that entry with the release date, affected command-line entry
-   points, and externally meaningful changes.
-3. Update `project.version` in `pyproject.toml`.
-4. Run `make release-check`.
-5. Commit and push the reviewed product change.
-6. Create and push an annotated matching Git tag, for example
-   `git tag -a v0.1.2 -m "mikebd-py-scripts v0.1.2"` followed by
-   `git push origin v0.1.2`.
-7. Repeat the install and `--version` smoke test against the public tag in an
+2. From a clean, attached branch, run:
+
+   ```bash
+   make release-lock VERSION=X.Y.Z
+   ```
+
+   The repository-local helper finalizes the Draft entry, updates the project
+   and locked distribution versions, updates marked version examples, runs
+   `make release-check`, creates the release-lock commit, and pushes only
+   remotes where that branch is exactly one commit behind. To select a release
+   date explicitly, run
+   `uv run python scripts/dx/lock_release.py X.Y.Z --date YYYY-MM-DD`.
+3. Create and push an annotated matching Git tag, for example
+   `git tag -a vX.Y.Z -m "mikebd-py-scripts vX.Y.Z"` followed by
+   `git push origin vX.Y.Z`.
+4. Repeat the install and `--version` smoke test against the public tag in an
    isolated UV tool directory.
 
 No PyPI upload or GitHub Release object is part of this procedure.

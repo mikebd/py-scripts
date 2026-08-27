@@ -8,7 +8,7 @@ ifndef UV
 $(error "uv not found in PATH. Please install uv: https://astral.sh/uv/")
 endif
 
-.PHONY: help lint format typecheck fix check all fmt build release-check
+.PHONY: help lint format typecheck fix check all fmt build release-check release-lock
 
 # Default target: show help
 help:
@@ -22,6 +22,7 @@ help:
 	@echo "  make fmt           - Fix, format, and run all checks"
 	@echo "  make build         - Build source and wheel distributions"
 	@echo "  make release-check - Validate release notes and a clean Git-tagged distribution installation"
+	@echo "  make release-lock - Finalize, validate, commit, and conditionally push a release (VERSION=X.Y.Z)"
 	@echo "  make all           - Run all non-mutating checks"
 
 # Default: non-mutating checks (CI-safe)
@@ -37,6 +38,10 @@ build:
 
 release-check: all build
 	$(UV) run python scripts/check_release.py --uv "$(UV)"
+
+release-lock:
+	@test -n "$(VERSION)" || (echo "VERSION is required, for example: make release-lock VERSION=0.1.3" >&2; exit 2)
+	$(UV) run python scripts/dx/lock_release.py "$(VERSION)" --uv "$(UV)" $(if $(RELEASE_DATE),--date "$(RELEASE_DATE)")
 
 test-parallel:
 	$(UV) run pytest -n auto
