@@ -111,6 +111,8 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
                 str(preparation),
                 "--add-dir",
                 str(local_directory),
+                "--sandbox-mode",
+                "read-only",
             ]
         )
         == 0
@@ -121,6 +123,10 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
     assert metadata.session is None
     assert metadata.local_writable_dirs == (local_directory.resolve(),)
     assert launcher_git_metadata_access(metadata) is GitMetadataAccess.SHARED
+    assert metadata.extensions == {
+        "codex": {"sandbox": "read-only"},
+        "core": {"git_metadata_access": "shared"},
+    }
     assert "default session: none" in capsys.readouterr().out
 
     explicit_target = tmp_path / "new-explicit"
@@ -185,6 +191,8 @@ def test_stack_derives_strict_sibling_targets_from_committed_source_head(
                 "# generated launcher",
                 "--add-dir",
                 str(local_directory),
+                "--sandbox-mode",
+                "danger-full-access",
             ]
         )
         == 0
@@ -197,6 +205,10 @@ def test_stack_derives_strict_sibling_targets_from_committed_source_head(
     metadata = read_launcher(launcher_directory / "codex-source-child")
     assert metadata.session is None
     assert metadata.local_writable_dirs == (local_directory.resolve(),)
+    assert metadata.extensions == {
+        "codex": {"sandbox": "danger-full-access"},
+        "core": {"git_metadata_access": "worktree"},
+    }
 
 
 def test_new_rejects_collisions_without_creating_resources(

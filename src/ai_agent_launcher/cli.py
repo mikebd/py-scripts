@@ -193,7 +193,9 @@ def _launcher(
             _optional_agent(namespace.agent),
             tuple(namespace.requested_writable_dirs),
             _passthrough(namespace.agent_arguments),
-            _optional_git_metadata_access(namespace.git_metadata_access),
+            git_metadata_access=_optional_git_metadata_access(namespace.git_metadata_access),
+            sandbox_mode=namespace.sandbox_mode,
+            removed_dirs=tuple(namespace.removed_writable_dirs),
         )
         return 0
     if namespace.launcher_command == "adopt":
@@ -203,7 +205,9 @@ def _launcher(
             namespace.session_id,
             _optional_agent(namespace.agent),
             tuple(namespace.requested_writable_dirs),
-            _optional_git_metadata_access(namespace.git_metadata_access),
+            git_metadata_access=_optional_git_metadata_access(namespace.git_metadata_access),
+            sandbox_mode=namespace.sandbox_mode,
+            removed_dirs=tuple(namespace.removed_writable_dirs),
         )
         return 0
     parser.error("launcher command is required")
@@ -219,6 +223,7 @@ def _launcher_create(namespace: argparse.Namespace, lifecycle: LauncherLifecycle
         namespace.preparation_path,
         tuple(namespace.requested_writable_dirs),
         _optional_git_metadata_access(namespace.git_metadata_access),
+        namespace.sandbox_mode,
     )
     return 0
 
@@ -287,6 +292,7 @@ def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
             tuple(namespace.requested_writable_dirs),
             _optional_git_metadata_access(namespace.git_metadata_access),
             namespace.source_worktree_dir,
+            namespace.sandbox_mode,
         )
     elif namespace.worktree_command == "stack":
         result = worktrees.stack(
@@ -296,6 +302,7 @@ def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
             namespace.preparation_path,
             tuple(namespace.requested_writable_dirs),
             _optional_git_metadata_access(namespace.git_metadata_access),
+            namespace.sandbox_mode,
         )
     else:
         raise LauncherError("worktree command is required")
@@ -342,6 +349,7 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     create.add_argument("--prepare", dest="preparation_path", type=Path)
     _add_directories_argument(create)
     _add_git_metadata_access_argument(create)
+    _add_sandbox_mode_argument(create, registry)
 
     run = launcher_commands.add_parser("run", help="execute a generated launcher")
     run.add_argument("--launcher", type=Path, required=True)
@@ -369,14 +377,18 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     fork = launcher_commands.add_parser("fork", help="fork a pinned launcher session")
     _add_source_target_arguments(fork, agent_choices)
     _add_directories_argument(fork)
+    _remove_directories_argument(fork)
     _add_git_metadata_access_argument(fork)
+    _add_sandbox_mode_argument(fork, registry)
     fork.add_argument("agent_arguments", nargs=argparse.REMAINDER, metavar="AGENT_ARGUMENT")
 
     adopt = launcher_commands.add_parser("adopt", help="bind a launcher to an existing session")
     _add_source_target_arguments(adopt, agent_choices)
     adopt.add_argument("--session-id", required=True)
     _add_directories_argument(adopt)
+    _remove_directories_argument(adopt)
     _add_git_metadata_access_argument(adopt)
+    _add_sandbox_mode_argument(adopt, registry)
 
 
 def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
@@ -397,14 +409,14 @@ def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     new.add_argument("--branch")
     new.add_argument("--from", dest="from_ref")
     new.add_argument("--launcher", type=Path)
-    _add_worktree_launcher_options(new)
+    _add_worktree_launcher_options(new, registry)
 
     stack = worktree_commands.add_parser(
         "stack", help="create strict sibling targets from the current worktree"
     )
     stack.add_argument("--agent", choices=agent_choices, required=True)
     stack.add_argument("--suffix", required=True)
-    _add_worktree_launcher_options(stack)
+    _add_worktree_launcher_options(stack, registry)
 
 
 def _add_completion_parser(commands: _SubparserCommands) -> None:
@@ -420,6 +432,16 @@ def _remove_directories_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--remove-dir", dest="removed_writable_dirs", action="append", default=[])
 
 
+def _add_sandbox_mode_argument(
+    parser: argparse.ArgumentParser, registry: AgentRegistry
+) -> None:
+    parser.add_argument(
+        "--sandbox-mode",
+        choices=_launcher_sandbox_modes(registry),
+        help="persist an adapter-owned sandbox mode in the generated launcher",
+    )
+
+
 def _launcher_sandbox_modes(registry: AgentRegistry) -> tuple[str, ...]:
     """Return the stable union of adapter-owned persisted sandbox modes."""
     modes = {
@@ -431,11 +453,14 @@ def _launcher_sandbox_modes(registry: AgentRegistry) -> tuple[str, ...]:
     return tuple(sorted(modes))
 
 
-def _add_worktree_launcher_options(parser: argparse.ArgumentParser) -> None:
+def _add_worktree_launcher_options(
+    parser: argparse.ArgumentParser, registry: AgentRegistry
+) -> None:
     parser.add_argument("--marker", required=True)
     parser.add_argument("--prepare", dest="preparation_path", type=Path)
     _add_directories_argument(parser)
     _add_git_metadata_access_argument(parser)
+    _add_sandbox_mode_argument(parser, registry)
 
 
 def _add_git_metadata_access_argument(parser: argparse.ArgumentParser) -> None:

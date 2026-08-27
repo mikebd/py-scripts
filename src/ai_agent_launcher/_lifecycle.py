@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -24,7 +25,6 @@ from ai_agent_launcher._launchers import (
     replace_session,
     update_local_directories,
     with_git_metadata_access,
-    with_local_directories,
     with_metadata_extension,
     write_launcher,
 )
@@ -49,9 +49,10 @@ class LauncherLifecycle:
         preparation_path: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None = None,
+        sandbox_mode: str | None = None,
     ) -> Path:
         """Create an initially unpinned launcher for an existing worktree."""
-        self._runtime_adapter(agent_id)
+        self.validate_creation(agent_id, sandbox_mode)
         metadata = build_metadata(
             agent_id,
             worktree_dir,
@@ -60,7 +61,14 @@ class LauncherLifecycle:
             local_writable_dirs,
         )
         access = git_metadata_access or self._config.core.default_git_metadata_access
-        return write_launcher(launcher, with_git_metadata_access(metadata, access))
+        metadata = with_git_metadata_access(metadata, access)
+        return write_launcher(launcher, self._with_sandbox_mode(metadata, sandbox_mode))
+
+    def validate_creation(self, agent_id: AgentId, sandbox_mode: str | None) -> None:
+        """Validate adapter capabilities required before creating launcher resources."""
+        self._runtime_adapter(agent_id)
+        if sandbox_mode is not None:
+            self._sandbox_adapter(agent_id).validate_launcher_sandbox_mode(sandbox_mode)
 
     def run(self, launcher: Path, passthrough_args: tuple[str, ...]) -> int:
         """Run a rendered launcher through its selected runtime adapter."""
@@ -142,12 +150,18 @@ class LauncherLifecycle:
         additional_dirs: tuple[str, ...],
         passthrough_args: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None = None,
+        sandbox_mode: str | None = None,
+        removed_dirs: tuple[str, ...] = (),
     ) -> SessionReference:
         """Create a child session and render a target launcher for it."""
         metadata = self._source(launcher, expected_agent)
         if metadata.session is None:
             raise LauncherError("source launcher has no pinned session")
         preflight_launcher_target(target_launcher)
+        target, unmatched_removals, _ = update_local_directories(
+            metadata, additional_dirs, removed_dirs
+        )
+        target = self._with_sandbox_mode(target, sandbox_mode)
         adapter = self._lifecycle_adapter(metadata.agent_id)
         self._run_preparation(metadata)
         session = adapter.fork_session(
@@ -157,12 +171,13 @@ class LauncherLifecycle:
             passthrough_args,
         )
         access = git_metadata_access or launcher_git_metadata_access(metadata)
-        target = replace_session(with_local_directories(metadata, additional_dirs), session.value)
+        target = replace_session(target, session.value)
         target = with_git_metadata_access(
             target,
             access,
         )
         write_launcher(target_launcher, target)
+        self._warn_unmatched_removals(unmatched_removals)
         return session
 
     def adopt(
@@ -173,9 +188,15 @@ class LauncherLifecycle:
         expected_agent: AgentId | None,
         additional_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None = None,
+        sandbox_mode: str | None = None,
+        removed_dirs: tuple[str, ...] = (),
     ) -> None:
         """Create a target launcher for an existing same-worktree agent session."""
         metadata = self._source(launcher, expected_agent)
+        target, unmatched_removals, _ = update_local_directories(
+            metadata, additional_dirs, removed_dirs
+        )
+        target = self._with_sandbox_mode(target, sandbox_mode)
         adapter = self._lifecycle_adapter(metadata.agent_id)
         session = SessionReference(metadata.agent_id, session_id)
         record = adapter.find_session(self._settings(metadata.agent_id), session)
@@ -196,12 +217,13 @@ class LauncherLifecycle:
                     f"not source launcher session {metadata.session.value}"
                 )
         access = git_metadata_access or launcher_git_metadata_access(metadata)
-        target = replace_session(with_local_directories(metadata, additional_dirs), session_id)
+        target = replace_session(target, session_id)
         target = with_git_metadata_access(
             target,
             access,
         )
         write_launcher(target_launcher, target)
+        self._warn_unmatched_removals(unmatched_removals)
 
     def metadata(self, launcher: Path, expected_agent: AgentId | None = None) -> LauncherMetadata:
         """Read source metadata and validate an optional agent assertion."""
@@ -247,6 +269,22 @@ class LauncherLifecycle:
                 f"agent does not support persisted launcher sandbox settings: {agent_id}"
             )
         return adapter
+
+    def _with_sandbox_mode(
+        self, metadata: LauncherMetadata, sandbox_mode: str | None
+    ) -> LauncherMetadata:
+        if sandbox_mode is None:
+            return metadata
+        adapter = self._sandbox_adapter(metadata.agent_id)
+        adapter.validate_launcher_sandbox_mode(sandbox_mode)
+        return with_metadata_extension(metadata, str(metadata.agent_id), "sandbox", sandbox_mode)
+
+    def _warn_unmatched_removals(self, directories: tuple[Path, ...]) -> None:
+        for directory in directories:
+            print(
+                f"warning: launcher-local writable directory is not stored: {directory}",
+                file=sys.stderr,
+            )
 
     def _run_preparation(self, metadata: LauncherMetadata) -> None:
         self.prepare(metadata.worktree_dir, metadata.preparation_path)

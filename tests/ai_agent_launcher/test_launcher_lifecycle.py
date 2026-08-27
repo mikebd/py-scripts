@@ -1302,7 +1302,10 @@ def test_run_uses_pinned_session_through_codex_adapter(
 
 
 def test_fork_prepares_worktree_and_creates_child_launcher(
-    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     executable = _fake_codex(tmp_path)
     config_path = tmp_path / "config.toml"
@@ -1312,8 +1315,11 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
     target = tmp_path / "target-launcher"
     inherited = tmp_path / "inherited"
     added = tmp_path / "added"
+    removed = tmp_path / "removed"
+    unstored = tmp_path / "unstored"
     inherited.mkdir()
     added.mkdir()
+    removed.mkdir()
     preparation = tmp_path / "prepare"
     prepared = tmp_path / "prepared"
     preparation.write_text('#!/bin/sh\nprintf \'%s\' "$2" > "$PREPARED_OUTPUT"\n', encoding="utf-8")
@@ -1343,6 +1349,10 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
                 str(preparation),
                 "--add-dir",
                 str(inherited),
+                "--add-dir",
+                str(removed),
+                "--sandbox-mode",
+                "read-only",
             ]
         )
         == 0
@@ -1377,6 +1387,12 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
                 str(inherited),
                 "--add-dir",
                 str(added),
+                "--remove-dir",
+                str(removed),
+                "--remove-dir",
+                str(unstored),
+                "--sandbox-mode",
+                "danger-full-access",
                 "--",
                 "continue",
             ]
@@ -1390,6 +1406,18 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
     assert target_metadata.session is not None
     assert target_metadata.session.value == "child-session"
     assert target_metadata.local_writable_dirs == (inherited.resolve(), added.resolve())
+    assert target_metadata.extensions == {
+        "codex": {"sandbox": "danger-full-access"},
+        "core": {"git_metadata_access": "worktree"},
+    }
+    assert read_launcher(source).local_writable_dirs == (inherited.resolve(), removed.resolve())
+    assert read_launcher(source).extensions == {
+        "codex": {"sandbox": "read-only"},
+        "core": {"git_metadata_access": "worktree"},
+    }
+    assert capsys.readouterr().err == (
+        f"warning: launcher-local writable directory is not stored: {unstored.resolve()}\n"
+    )
 
 
 def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
@@ -1416,6 +1444,12 @@ def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
     _config(config_path, tmp_path / "unused-codex", home)
     source = tmp_path / "source-launcher"
     target = tmp_path / "target-launcher"
+    inherited = tmp_path / "inherited"
+    added = tmp_path / "added"
+    removed = tmp_path / "removed"
+    inherited.mkdir()
+    added.mkdir()
+    removed.mkdir()
     assert (
         main(
             [
@@ -1431,6 +1465,10 @@ def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
                 str(git_worktree),
                 "--marker",
                 "# launcher marker",
+                "--add-dir",
+                str(inherited),
+                "--add-dir",
+                str(removed),
             ]
         )
         == 0
@@ -1464,9 +1502,23 @@ def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
                 str(target),
                 "--session-id",
                 "existing-session",
+                "--add-dir",
+                str(added),
+                "--remove-dir",
+                str(removed),
+                "--sandbox-mode",
+                "read-only",
             ]
         )
         == 0
     )
     assert "unrelated-parent" in capsys.readouterr().out
-    assert read_launcher(target).session is not None
+    target_metadata = read_launcher(target)
+    assert target_metadata.session is not None
+    assert target_metadata.session.value == "existing-session"
+    assert target_metadata.local_writable_dirs == (inherited.resolve(), added.resolve())
+    assert target_metadata.extensions == {
+        "codex": {"sandbox": "read-only"},
+        "core": {"git_metadata_access": "worktree"},
+    }
+    assert read_launcher(source).local_writable_dirs == (inherited.resolve(), removed.resolve())

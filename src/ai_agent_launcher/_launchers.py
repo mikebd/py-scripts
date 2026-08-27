@@ -226,7 +226,7 @@ def with_local_directories(
 
 
 def update_local_directories(
-    artifact: LauncherArtifactMetadata,
+    artifact: LauncherArtifactMetadata | LauncherMetadata,
     additional_dirs: tuple[str, ...],
     removed_dirs: tuple[str, ...],
 ) -> tuple[LauncherMetadata, tuple[Path, ...], bool]:

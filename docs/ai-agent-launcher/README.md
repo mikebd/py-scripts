@@ -192,9 +192,22 @@ configuration.
 
 ### Persisted sandbox settings
 
+Set an initial persisted sandbox mode while creating a launcher with
+`--sandbox-mode`. `launcher create`, `launcher fork`, `launcher adopt`,
+`worktree new`, and `worktree stack` support this option. It accepts the
+sandbox modes supported by the selected agent adapter; the current Codex
+adapter supports `read-only`, `workspace-write`, and `danger-full-access`.
+
+`launcher fork` and `launcher adopt` copy the source launcher's local writable
+directories and persisted sandbox mode unless explicitly overridden. Their
+repeatable `--remove-dir` option removes inherited launcher-local directories;
+an unmatched path warns but does not block creation. It cannot remove
+directories configured under `[core].writable_dirs` or directories added
+automatically by the selected adapter.
+
 Use `launcher sandbox` to update an existing launcher's Codex sandbox mode,
 add or remove launcher-local writable directories, or combine those updates
-atomically:
+atomically. Its shorter `--mode` option is local to that sandbox subcommand:
 
 ```bash
 ai-agent-launcher launcher sandbox \
@@ -204,12 +217,10 @@ ai-agent-launcher launcher sandbox \
   --remove-dir /path/to/no-longer-needed-directory
 ```
 
-`--mode` accepts the sandbox modes supported by the selected agent adapter;
-the current Codex adapter supports `read-only`, `workspace-write`, and
-`danger-full-access`. `--add-dir` and `--remove-dir` are repeatable. Added
-directories must already exist and are stored as canonical absolute paths.
-Removal accepts an absolute path even when the stored directory has since been
-deleted, so it can repair stale launcher metadata.
+`--add-dir` and `--remove-dir` are repeatable. Added directories must already
+exist and are stored as canonical absolute paths. Removal accepts an absolute
+path even when the stored directory has since been deleted, so it can repair
+stale launcher metadata.
 
 At least one update is required: use `--mode`, one or more `--add-dir` or
 `--remove-dir` values, or a combination. `--mode` is optional when only
@@ -217,7 +228,7 @@ changing directories. A directory requested for removal but not stored in
 launcher-local metadata produces a warning and does not prevent other updates.
 The command preserves the launcher's session and other persisted settings, does
 not start an agent, and affects only future launcher invocations. Without a
-persisted `--mode`, a launcher continues to use its current
+persisted sandbox-mode override, a launcher continues to use its current
 `[agents.codex].sandbox` configuration value. Use `launcher describe` to
 inspect a persisted override under `codex.sandbox` and launcher-local
 directories.

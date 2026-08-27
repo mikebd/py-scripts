@@ -129,7 +129,30 @@ def test_launcher_sandbox_help_lists_persistent_update_options(
     assert "--mode" in help_text
     assert "--add-dir" in help_text
     assert "--remove-dir" in help_text
+    assert "--sandbox-mode" not in help_text.split()
     assert "{danger-full-access,read-only,workspace-write}" in help_text
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expects_remove_dir"),
+    (
+        (("launcher", "create", "--help"), False),
+        (("launcher", "fork", "--help"), True),
+        (("launcher", "adopt", "--help"), True),
+        (("worktree", "new", "--help"), False),
+        (("worktree", "stack", "--help"), False),
+    ),
+)
+def test_launcher_creation_help_lists_sandbox_mode(
+    arguments: tuple[str, ...], expects_remove_dir: bool, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(list(arguments))
+
+    help_text = capsys.readouterr().out
+    assert "--sandbox-mode" in help_text
+    assert ("--remove-dir" in help_text) is expects_remove_dir
+    assert "--mode" not in help_text.split()
 
 
 def test_strict_stack_help_omits_target_overrides(capsys: pytest.CaptureFixture[str]) -> None:

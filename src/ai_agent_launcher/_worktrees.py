@@ -43,6 +43,7 @@ class WorktreeLifecycle:
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
         source_worktree_argument: Path | None = None,
+        sandbox_mode: str | None = None,
     ) -> CreatedWorktree:
         """Create one explicit target worktree from a selected repository's primary ref."""
         source = resolve_worktree(source_worktree_argument)
@@ -55,6 +56,7 @@ class WorktreeLifecycle:
         preparation = validate_launcher_creation_inputs(
             marker, preparation_argument, local_writable_dirs
         )
+        self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(primary, target, target_branch, launcher)
         return self._create(
             primary,
@@ -67,6 +69,7 @@ class WorktreeLifecycle:
             preparation,
             local_writable_dirs,
             git_metadata_access,
+            sandbox_mode,
         )
 
     def stack(
@@ -77,6 +80,7 @@ class WorktreeLifecycle:
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
+        sandbox_mode: str | None = None,
     ) -> CreatedWorktree:
         """Create strict sibling targets from the current attached worktree HEAD."""
         self._validate_suffix(suffix)
@@ -90,6 +94,7 @@ class WorktreeLifecycle:
         preparation = validate_launcher_creation_inputs(
             marker, preparation_argument, local_writable_dirs
         )
+        self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(source, target, target_branch, launcher)
         return self._create(
             source,
@@ -102,6 +107,7 @@ class WorktreeLifecycle:
             preparation,
             local_writable_dirs,
             git_metadata_access,
+            sandbox_mode,
         )
 
     def _create(
@@ -116,6 +122,7 @@ class WorktreeLifecycle:
         preparation: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
+        sandbox_mode: str | None,
     ) -> CreatedWorktree:
         created = False
         try:
@@ -139,6 +146,7 @@ class WorktreeLifecycle:
                 preparation,
                 local_writable_dirs,
                 git_metadata_access,
+                sandbox_mode,
             )
         except BaseException:
             if created:
