@@ -173,17 +173,12 @@ def _launcher(
             and not namespace.removed_writable_dirs
         ):
             parser.error("launcher sandbox requires --mode, --add-dir, or --remove-dir")
-        unmatched_removals = lifecycle.sandbox(
+        lifecycle.sandbox(
             namespace.launcher,
             namespace.mode,
             tuple(namespace.requested_writable_dirs),
             tuple(namespace.removed_writable_dirs),
         )
-        for directory in unmatched_removals:
-            print(
-                f"warning: launcher-local writable directory is not stored: {directory}",
-                file=sys.stderr,
-            )
         return 0
     if namespace.launcher_command == "fork":
         _require_separator(namespace.agent_arguments, arguments, parser)

@@ -120,7 +120,7 @@ class LauncherLifecycle:
         mode: str | None,
         additional_dirs: tuple[str, ...],
         removed_dirs: tuple[str, ...],
-    ) -> tuple[Path, ...]:
+    ) -> None:
         """Atomically update persisted sandbox settings on one launcher."""
         artifact = read_launcher_artifact(launcher)
         updated, unmatched_removals, removed_stored_directory = update_local_directories(
@@ -131,14 +131,15 @@ class LauncherLifecycle:
             adapter.validate_launcher_sandbox_mode(mode)
             updated = with_metadata_extension(updated, str(updated.agent_id), "sandbox", mode)
         if mode is None and not additional_dirs and not removed_stored_directory:
-            return unmatched_removals
+            self._warn_unmatched_removals(unmatched_removals)
+            return
         write_launcher(
             launcher,
             updated,
             replace=True,
             mode=launcher_mode(launcher),
         )
-        return unmatched_removals
+        self._warn_unmatched_removals(unmatched_removals)
 
     def fork(
         self,

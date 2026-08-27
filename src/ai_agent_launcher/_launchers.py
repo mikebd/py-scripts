@@ -183,7 +183,10 @@ def write_launcher(
             f"{_METADATA_PREFIX}{encoded}",
             'case "$0" in',
             '  /*) launcher_path="$0" ;;',
-            '  *) launcher_path="$(CDPATH='' cd -P "$(dirname "$0")" && pwd)/$(basename "$0")" ;;',
+            (
+                "  *) launcher_path=\"$(CDPATH='' cd -P \"$(dirname \"$0\")\" && "
+                "pwd)/$(basename \"$0\")\" ;;"
+            ),
             "esac",
             f"cd {shlex.quote(str(metadata.worktree_dir))}",
             'exec ai-agent-launcher launcher run --launcher "$launcher_path" -- "$@"',

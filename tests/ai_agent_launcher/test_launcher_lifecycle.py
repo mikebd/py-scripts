@@ -193,6 +193,7 @@ def test_create_and_pin_preserve_versioned_metadata(
     assert launcher.stat().st_mode & 0o777 == 0o700
     content = launcher.read_text(encoding="utf-8")
     assert 'exec ai-agent-launcher launcher run --launcher "$launcher_path" -- "$@"' in content
+    assert "CDPATH='' cd -P" in content
     assert (
         "# Inspect metadata with: ai-agent-launcher launcher describe "
         "--launcher <launcher-path>" in content
@@ -1310,26 +1311,25 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
     )
 
     environment = os.environ | {
-        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "PATH": f"{launcher.parent}:{bin_dir}:{os.environ['PATH']}",
         "LAUNCHER_CAPTURE": str(capture),
         "LAUNCHER_WORKING_DIRECTORY": str(working_directory),
     }
-    subprocess.run(
-        ["/bin/sh", f"./{launcher.name}", "continue"],
-        check=True,
-        cwd=launcher.parent,
-        env=environment,
-    )
-
-    assert capture.read_text(encoding="utf-8").splitlines() == [
-        "launcher",
-        "run",
-        "--launcher",
-        str(launcher),
-        "--",
-        "continue",
-    ]
-    assert working_directory.read_text(encoding="utf-8").strip() == str(git_worktree)
+    for arguments, cwd in (
+        ((str(launcher), "continue"), None),
+        ((f"./{launcher.name}", "continue"), launcher.parent),
+        ((launcher.name, "continue"), git_worktree),
+    ):
+        subprocess.run(arguments, check=True, cwd=cwd, env=environment)
+        assert capture.read_text(encoding="utf-8").splitlines() == [
+            "launcher",
+            "run",
+            "--launcher",
+            str(launcher),
+            "--",
+            "continue",
+        ]
+        assert working_directory.read_text(encoding="utf-8").strip() == str(git_worktree)
 
 
 def test_run_uses_pinned_session_through_codex_adapter(
