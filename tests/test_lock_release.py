@@ -136,6 +136,35 @@ def _with_remote(root: Path, tmp_path: Path) -> Path:
     return remote
 
 
+def _branch_reference(root: Path) -> str:
+    return f"refs/heads/{_run(['git', 'branch', '--show-current'], root).strip()}"
+
+
+def _push_branch(root: Path, destination: Path) -> None:
+    _run(["git", "push", "-q", str(destination), f"HEAD:{_branch_reference(root)}"], root)
+
+
+def _bare_head(root: Path, destination: Path) -> str:
+    return _run(["git", "--git-dir", str(destination), "rev-parse", _branch_reference(root)], root)
+
+
+def _with_push_destinations(
+    root: Path, tmp_path: Path, count: int
+) -> tuple[Path, tuple[Path, ...]]:
+    fetch_destination = tmp_path / "fetch.git"
+    _run(["git", "init", "--bare", "-q", str(fetch_destination)], root)
+    _run(["git", "remote", "add", "origin", str(fetch_destination)], root)
+    _push_branch(root, fetch_destination)
+    destinations: list[Path] = []
+    for index in range(count):
+        destination = tmp_path / f"push-{index}.git"
+        _run(["git", "init", "--bare", "-q", str(destination)], root)
+        _push_branch(root, destination)
+        _run(["git", "config", "--add", "remote.origin.pushurl", str(destination)], root)
+        destinations.append(destination)
+    return fetch_destination, tuple(destinations)
+
+
 def test_lock_release_finalizes_and_pushes_the_one_commit_ahead_branch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -159,6 +188,45 @@ def test_lock_release_finalizes_and_pushes_the_one_commit_ahead_branch(
     assert _run(["git", "rev-parse", "HEAD"], root) == _run(
         ["git", "--git-dir", str(remote), "rev-parse", f"refs/heads/{branch}"], root
     )
+
+
+def test_lock_release_pushes_every_safe_configured_push_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release_lock = _release_lock_module()
+    root = _source_repository(tmp_path)
+    _, destinations = _with_push_destinations(root, tmp_path, 2)
+    make_directory = _fake_make(tmp_path)
+    monkeypatch.setenv("PATH", f"{make_directory}:{os.environ['PATH']}")
+
+    release_lock.lock_release(root, "0.1.3", date(2026, 8, 27), _fake_uv(tmp_path))
+
+    head = _run(["git", "rev-parse", "HEAD"], root)
+    assert tuple(_bare_head(root, destination) for destination in destinations) == (head, head)
+
+
+def test_lock_release_does_not_push_any_destination_when_one_pushurl_is_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    release_lock = _release_lock_module()
+    root = _source_repository(tmp_path)
+    fetch_destination, (safe_destination, stale_destination) = _with_push_destinations(
+        root, tmp_path, 2
+    )
+    stale_head = _bare_head(root, stale_destination)
+    _run(["git", "commit", "--allow-empty", "-qm", "another local commit"], root)
+    safe_head = _run(["git", "rev-parse", "HEAD"], root)
+    _push_branch(root, fetch_destination)
+    _push_branch(root, safe_destination)
+    make_directory = _fake_make(tmp_path)
+    monkeypatch.setenv("PATH", f"{make_directory}:{os.environ['PATH']}")
+
+    release_lock.lock_release(root, "0.1.3", date(2026, 8, 27), _fake_uv(tmp_path))
+
+    assert "not pushing origin" in capsys.readouterr().out
+    assert _bare_head(root, fetch_destination) == safe_head
+    assert _bare_head(root, safe_destination) == safe_head
+    assert _bare_head(root, stale_destination) == stale_head
 
 
 def test_lock_release_requires_a_clean_worktree(tmp_path: Path) -> None:

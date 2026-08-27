@@ -192,17 +192,37 @@ def _verify_controlled_changes(root: Path) -> tuple[Path, ...]:
 def _push_one_commit_ahead(root: Path, branch: str) -> None:
     reference = f"refs/heads/{branch}"
     for remote in _run(["git", "remote"], cwd=root).splitlines():
-        remote_heads = _run(["git", "ls-remote", "--heads", remote, reference], cwd=root)
-        if not remote_heads.strip():
-            print(f"not pushing {remote}: it does not already have {branch}")
+        destinations = _push_destinations(root, remote)
+        destination_is_safe = tuple(
+            _destination_is_one_commit_behind(root, destination, reference)
+            for destination in destinations
+        )
+        if not all(destination_is_safe):
+            print(f"not pushing {remote}: a push destination is not exactly one commit behind HEAD")
             continue
-        _run(["git", "fetch", "--quiet", remote, reference], cwd=root)
-        counts = _run(["git", "rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"], cwd=root)
-        if counts.split() != ["1", "0"]:
-            print(f"not pushing {remote}: {branch} is not exactly one commit behind HEAD")
-            continue
-        _run(["git", "push", remote, f"HEAD:{reference}"], cwd=root)
+        for destination in destinations:
+            _run(["git", "push", destination, f"HEAD:{reference}"], cwd=root)
         print(f"pushed release-lock commit to {remote}/{branch}")
+
+
+def _push_destinations(root: Path, remote: str) -> tuple[str, ...]:
+    """Return each actual push destination once, preserving Git's configured order."""
+    destinations = dict.fromkeys(
+        _run(["git", "remote", "get-url", "--push", "--all", remote], cwd=root).splitlines()
+    )
+    if not destinations:
+        raise ReleaseLockError(f"remote has no push destinations: {remote}")
+    return tuple(destinations)
+
+
+def _destination_is_one_commit_behind(root: Path, destination: str, reference: str) -> bool:
+    """Check the exact URL that a later explicit push will target."""
+    remote_heads = _run(["git", "ls-remote", "--heads", destination, reference], cwd=root)
+    if not remote_heads.strip():
+        return False
+    _run(["git", "fetch", "--quiet", destination, reference], cwd=root)
+    counts = _run(["git", "rev-list", "--left-right", "--count", "HEAD...FETCH_HEAD"], cwd=root)
+    return counts.split() == ["1", "0"]
 
 
 def lock_release(root: Path, target: str, release_date: date, uv: Path) -> None:
