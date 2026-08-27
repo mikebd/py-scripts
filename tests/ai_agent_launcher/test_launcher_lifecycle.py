@@ -418,6 +418,51 @@ def test_launcher_sandbox_updates_persisted_mode_and_directories(
     assert '  - codex.sandbox: "workspace-write"' in capsys.readouterr().out
 
 
+def test_launcher_sandbox_removes_home_relative_directory(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    directory = home / "scratch"
+    directory.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    launcher = tmp_path / "launcher"
+
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--add-dir",
+                "~/scratch",
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == (directory.resolve(),)
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                "~/scratch",
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == ()
+
+
 def test_launcher_sandbox_directory_update_retains_configured_mode(
     git_worktree: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -217,9 +217,9 @@ ai-agent-launcher launcher sandbox \
 ```
 
 `--add-dir` and `--remove-dir` are repeatable. Added directories must already
-exist and are stored as canonical absolute paths. Removal accepts an absolute
-path even when the stored directory has since been deleted, so it can repair
-stale launcher metadata.
+exist and are stored as canonical absolute paths. Removal accepts a path that
+resolves to an absolute path, including `~/...`, even when the stored directory
+has since been deleted, so it can repair stale launcher metadata.
 
 At least one update is required: use `--mode`, one or more `--add-dir` or
 `--remove-dir` values, or a combination. `--mode` is optional when only

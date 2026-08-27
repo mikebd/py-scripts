@@ -415,11 +415,16 @@ def _canonical_removal_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
     directories: list[Path] = []
     for value in values:
         raw_path = Path(value)
-        if not raw_path.is_absolute():
+        try:
+            path = raw_path.expanduser()
+        except RuntimeError as error:
             raise LauncherError(
                 f"launcher local directory removal is not an absolute path: {raw_path}"
+            ) from error
+        if not path.is_absolute():
+            raise LauncherError(
+                f"launcher local directory removal is not an absolute path: {path}"
             )
-        path = raw_path.expanduser()
         resolved = path.resolve(strict=False)
         if resolved not in directories:
             directories.append(resolved)
