@@ -37,6 +37,7 @@ def test_completion_generates_script_for_supported_shell(
     assert "ai-agent-launcher" in captured.out
     assert "launcher" in captured.out
     assert "worktree" in captured.out
+    assert "--marker" not in captured.out
     assert captured.err == ""
 
 
@@ -116,6 +117,43 @@ def test_launcher_help_lists_describe(capsys: pytest.CaptureFixture[str]) -> Non
         main(["launcher", "--help"])
 
     assert "describe" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ("launcher", "create", "--help"),
+        ("worktree", "new", "--help"),
+        ("worktree", "stack", "--help"),
+    ),
+)
+def test_launcher_creation_help_omits_marker(
+    arguments: tuple[str, ...], capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(list(arguments))
+
+    assert "--marker" not in capsys.readouterr().out
+
+
+def test_launcher_create_rejects_removed_marker_option(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="2"):
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                "/tmp/launcher",
+                "--worktree-dir",
+                "/tmp/worktree",
+                "--marker",
+                "# legacy marker",
+            ]
+        )
+
+    assert "unrecognized arguments: --marker # legacy marker" in capsys.readouterr().err
 
 
 def test_launcher_sandbox_help_lists_persistent_update_options(

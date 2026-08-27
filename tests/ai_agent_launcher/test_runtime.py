@@ -423,8 +423,6 @@ def test_linked_worktree_git_metadata_access_is_shared_only_when_requested(
                 str(launcher),
                 "--worktree-dir",
                 str(linked),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0

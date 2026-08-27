@@ -38,7 +38,6 @@ class WorktreeLifecycle:
         branch: str | None,
         from_ref: str | None,
         launcher_argument: Path | None,
-        marker: str,
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
@@ -53,9 +52,7 @@ class WorktreeLifecycle:
         self._validate_branch(target_branch)
         start_ref = self._resolve_commit(primary, from_ref or "HEAD")
         launcher = self._launcher_path(agent_id, target.name, launcher_argument)
-        preparation = validate_launcher_creation_inputs(
-            marker, preparation_argument, local_writable_dirs
-        )
+        preparation = validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
         self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(primary, target, target_branch, launcher)
         return self._create(
@@ -65,7 +62,6 @@ class WorktreeLifecycle:
             target_branch,
             start_ref,
             launcher,
-            marker,
             preparation,
             local_writable_dirs,
             git_metadata_access,
@@ -76,7 +72,6 @@ class WorktreeLifecycle:
         self,
         agent_id: AgentId,
         suffix: str,
-        marker: str,
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
@@ -91,9 +86,7 @@ class WorktreeLifecycle:
         self._validate_branch(target_branch)
         start_ref = self._resolve_commit(source, "HEAD")
         launcher = self._launcher_path(agent_id, target.name, None)
-        preparation = validate_launcher_creation_inputs(
-            marker, preparation_argument, local_writable_dirs
-        )
+        preparation = validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
         self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(source, target, target_branch, launcher)
         return self._create(
@@ -103,7 +96,6 @@ class WorktreeLifecycle:
             target_branch,
             start_ref,
             launcher,
-            marker,
             preparation,
             local_writable_dirs,
             git_metadata_access,
@@ -118,7 +110,6 @@ class WorktreeLifecycle:
         branch: str,
         start_ref: str,
         launcher: Path,
-        marker: str,
         preparation: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
@@ -142,7 +133,6 @@ class WorktreeLifecycle:
                 agent_id,
                 launcher,
                 target,
-                marker,
                 preparation,
                 local_writable_dirs,
                 git_metadata_access,

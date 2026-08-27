@@ -45,7 +45,6 @@ class LauncherLifecycle:
         agent_id: AgentId,
         launcher: Path,
         worktree_dir: Path,
-        marker: str,
         preparation_path: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None = None,
@@ -56,7 +55,6 @@ class LauncherLifecycle:
         metadata = build_metadata(
             agent_id,
             worktree_dir,
-            marker,
             preparation_path,
             local_writable_dirs,
         )

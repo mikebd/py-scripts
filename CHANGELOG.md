@@ -24,6 +24,12 @@ may be corrected when needed.
 - Generated launchers change to their selected worktree before delegating to
   the installed runtime, so terminal multiplexer panes inherit that directory.
 
+### Removed
+
+- Launcher creation no longer accepts `--marker`. Existing v1 launcher
+  metadata that contains a marker remains supported but is ignored and removed
+  when the launcher is rewritten.
+
 ### Fixed
 
 - The Codex adapter omits a configured writable root when it would overlap

@@ -139,7 +139,7 @@ def test_launcher_run_and_fork_report_unknown_adapter(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     source = tmp_path / "source-launcher"
     target = tmp_path / "target-launcher"
-    metadata = build_metadata(AgentId("other"), git_worktree, "# generated launcher", None, ())
+    metadata = build_metadata(AgentId("other"), git_worktree, None, ())
     write_launcher(source, replace_session(metadata, "parent-session"))
 
     assert main(["launcher", "run", "--launcher", str(source)]) == 2
@@ -184,8 +184,6 @@ def test_create_and_pin_preserve_versioned_metadata(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(local_dir),
             ]
@@ -201,6 +199,14 @@ def test_create_and_pin_preserve_versioned_metadata(
     )
     assert read_launcher(launcher).session is None
     artifact = read_launcher_artifact(launcher)
+    metadata_line = next(
+        line
+        for line in content.splitlines()
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    encoded = metadata_line.removeprefix("# ai-agent-launcher-metadata-v1: ")
+    payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    assert "marker" not in payload
     assert artifact.extensions == {"core": {"git_metadata_access": "worktree"}}
     assert launcher_git_metadata_access(artifact) is GitMetadataAccess.WORKTREE
 
@@ -228,6 +234,101 @@ def test_create_and_pin_preserve_versioned_metadata(
     pinned = read_launcher(launcher).session
     assert pinned is not None
     assert pinned.value == "two"
+
+
+def test_legacy_marker_metadata_is_ignored_and_dropped_when_rewritten(
+    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 0
+    )
+
+    lines = launcher.read_text(encoding="utf-8").splitlines()
+    metadata_index = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    encoded = lines[metadata_index].removeprefix("# ai-agent-launcher-metadata-v1: ")
+    payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    payload["marker"] = {"legacy": ["ignored", True]}
+    replacement = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    lines.insert(2, "# legacy marker")
+    lines[metadata_index + 1] = f"# ai-agent-launcher-metadata-v1: {replacement}"
+    launcher.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert read_launcher(launcher).session is None
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
+    assert "marker:" not in capsys.readouterr().out
+
+    assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "one"]) == 0
+    rewritten = launcher.read_text(encoding="utf-8")
+    assert "# legacy marker" not in rewritten
+    rewritten_line = next(
+        line
+        for line in rewritten.splitlines()
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    rewritten_encoded = rewritten_line.removeprefix("# ai-agent-launcher-metadata-v1: ")
+    rewritten_payload = json.loads(
+        base64.urlsafe_b64decode(rewritten_encoded + "=" * (-len(rewritten_encoded) % 4))
+    )
+    assert "marker" not in rewritten_payload
+    rewritten_metadata = read_launcher_artifact(launcher)
+    assert rewritten_metadata.session is not None
+    assert rewritten_metadata.session.value == "one"
+
+
+def test_launcher_metadata_rejects_unknown_v1_key(git_worktree: Path, tmp_path: Path) -> None:
+    launcher = tmp_path / "launcher"
+    payload: dict[str, object] = {
+        "agent_id": "codex",
+        "format_version": 1,
+        "local_writable_dirs": [],
+        "preparation_path": None,
+        "session_id": None,
+        "unexpected": True,
+        "worktree_dir": str(git_worktree),
+    }
+    encoded = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    launcher.write_text(
+        "\n".join(
+            (
+                "#!/bin/sh",
+                f"# ai-agent-launcher-metadata-v1: {encoded}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LauncherError, match="unsupported launcher metadata version"):
+        read_launcher_artifact(launcher)
 
 
 def test_launcher_sandbox_updates_persisted_mode_and_directories(
@@ -263,8 +364,6 @@ def test_launcher_sandbox_updates_persisted_mode_and_directories(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(inherited),
                 "--add-dir",
@@ -346,8 +445,6 @@ def test_launcher_sandbox_directory_update_retains_configured_mode(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -395,8 +492,6 @@ def test_launcher_sandbox_removes_stale_local_directories(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(first),
                 "--add-dir",
@@ -451,8 +546,6 @@ def test_launcher_sandbox_does_not_rewrite_for_unstored_removal(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -516,8 +609,6 @@ def test_launcher_sandbox_rejects_conflicting_directory_updates_without_rewritin
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -562,8 +653,6 @@ def test_launcher_sandbox_preserves_invalid_stale_entries_not_removed(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(removed),
                 "--add-dir",
@@ -608,8 +697,6 @@ def test_launcher_sandbox_rejects_empty_or_invalid_updates_without_rewriting(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -705,8 +792,6 @@ def test_describe_reports_effective_dirs_and_degrades(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--prepare",
                 str(preparation),
                 "--add-dir",
@@ -752,7 +837,6 @@ def test_describe_reports_effective_dirs_and_degrades(
             "agent: codex",
             f"worktree: {git_worktree.resolve()}",
             "session: parent-session",
-            "marker: # launcher marker",
             f"preparation: {preparation.resolve()}",
             "git metadata access: worktree",
             "metadata extensions:",
@@ -816,8 +900,6 @@ def test_launcher_create_uses_configured_or_explicit_git_metadata_access(
                 str(configured),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -837,8 +919,6 @@ def test_launcher_create_uses_configured_or_explicit_git_metadata_access(
                 str(explicit),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--git-metadata-access",
                 "worktree",
             ]
@@ -863,8 +943,6 @@ def test_legacy_launcher_uses_implicit_worktree_access_without_rewrite(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -922,8 +1000,6 @@ def test_pin_preserves_unknown_metadata_extensions(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -970,8 +1046,6 @@ def test_describe_degrades_when_configuration_is_unavailable(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -1034,8 +1108,6 @@ def test_describe_sorts_local_and_effective_writable_directories(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(local_z),
                 "--add-dir",
@@ -1141,8 +1213,6 @@ def test_describe_rejects_unsupported_metadata_version(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -1193,8 +1263,8 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
     command = bin_dir / "ai-agent-launcher"
     command.write_text(
         "#!/bin/sh\n"
-        "printf '%s\\n' \"$@\" > \"$LAUNCHER_CAPTURE\"\n"
-        "printf '%s\\n' \"$PWD\" > \"$LAUNCHER_WORKING_DIRECTORY\"\n",
+        'printf \'%s\\n\' "$@" > "$LAUNCHER_CAPTURE"\n'
+        'printf \'%s\\n\' "$PWD" > "$LAUNCHER_WORKING_DIRECTORY"\n',
         encoding="utf-8",
     )
     command.chmod(0o755)
@@ -1209,8 +1279,6 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -1260,8 +1328,6 @@ def test_run_uses_pinned_session_through_codex_adapter(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -1343,8 +1409,6 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
                 str(source),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--prepare",
                 str(preparation),
                 "--add-dir",
@@ -1463,8 +1527,6 @@ def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
                 str(source),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(inherited),
                 "--add-dir",

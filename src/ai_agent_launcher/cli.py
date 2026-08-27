@@ -219,7 +219,6 @@ def _launcher_create(namespace: argparse.Namespace, lifecycle: LauncherLifecycle
         AgentId(namespace.agent),
         namespace.launcher,
         namespace.worktree_dir,
-        namespace.marker,
         namespace.preparation_path,
         tuple(namespace.requested_writable_dirs),
         _optional_git_metadata_access(namespace.git_metadata_access),
@@ -287,7 +286,6 @@ def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
             namespace.branch,
             namespace.from_ref,
             namespace.launcher,
-            namespace.marker,
             namespace.preparation_path,
             tuple(namespace.requested_writable_dirs),
             _optional_git_metadata_access(namespace.git_metadata_access),
@@ -298,7 +296,6 @@ def _worktree(namespace: argparse.Namespace, registry: AgentRegistry) -> int:
         result = worktrees.stack(
             agent_id,
             namespace.suffix,
-            namespace.marker,
             namespace.preparation_path,
             tuple(namespace.requested_writable_dirs),
             _optional_git_metadata_access(namespace.git_metadata_access),
@@ -345,7 +342,6 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     create.add_argument("--agent", choices=agent_choices, required=True)
     create.add_argument("--launcher", type=Path, required=True)
     create.add_argument("--worktree-dir", type=Path, required=True)
-    create.add_argument("--marker", required=True)
     create.add_argument("--prepare", dest="preparation_path", type=Path)
     _add_directories_argument(create)
     _add_git_metadata_access_argument(create)
@@ -432,9 +428,7 @@ def _remove_directories_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--remove-dir", dest="removed_writable_dirs", action="append", default=[])
 
 
-def _add_sandbox_mode_argument(
-    parser: argparse.ArgumentParser, registry: AgentRegistry
-) -> None:
+def _add_sandbox_mode_argument(parser: argparse.ArgumentParser, registry: AgentRegistry) -> None:
     parser.add_argument(
         "--sandbox-mode",
         choices=_launcher_sandbox_modes(registry),
@@ -456,7 +450,6 @@ def _launcher_sandbox_modes(registry: AgentRegistry) -> tuple[str, ...]:
 def _add_worktree_launcher_options(
     parser: argparse.ArgumentParser, registry: AgentRegistry
 ) -> None:
-    parser.add_argument("--marker", required=True)
     parser.add_argument("--prepare", dest="preparation_path", type=Path)
     _add_directories_argument(parser)
     _add_git_metadata_access_argument(parser)
