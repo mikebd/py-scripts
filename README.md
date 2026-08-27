@@ -156,4 +156,10 @@ within the project environment.
 | `make fmt`           | Fix, format, and run all checks (convenience) |
 | `make build`         | Build source and wheel distributions          |
 | `make release-check` | Validate release notes and a clean Git-tagged distribution installation |
+| `make release-lock VERSION=X.Y.Z` | Finalize, validate, commit, and conditionally push a release |
 | `make all`           | Run all non-mutating checks                   |
+
+`make release-lock` is repository-local release automation, not an installed
+command-line entry point. See the [AI agent launcher release
+procedure](docs/ai-agent-launcher/README.md#release-procedure) for its release
+boundary and the manual tag and public-install smoke-test steps that follow it.

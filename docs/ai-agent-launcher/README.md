@@ -16,6 +16,8 @@ It governs source selection, when an agent should prefer this command, and how
 it uses runtime `--version` and `--help`. It is the canonical activation
 policy; this guide remains the command's installation and usage reference.
 
+<!-- release-lock: current-version-examples:start -->
+
 ## Install the tagged distribution for persistent launchers
 
 `ai-agent-launcher` is a command-line entry point of the `mikebd-py-scripts`
@@ -26,13 +28,13 @@ requires `ai-agent-launcher` to be available on that process's `PATH`. Install
 the selected upstream distribution release with:
 
 ```bash
-uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.2"
+uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.3"
 ```
 
 For a fork, replace the repository URL and keep the selected tag:
 
 ```bash
-uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.2"
+uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.3"
 ```
 
 Ensure the UV tool binary directory is on `PATH`. You may run
@@ -44,6 +46,8 @@ Verify the installed executable with:
 ai-agent-launcher --version
 ai-agent-launcher --help
 ```
+
+<!-- release-lock: current-version-examples:end -->
 
 To move to a selected newer tag, rerun `uv tool install --reinstall` with that
 tag. This replaces the installed distribution with the requested source
@@ -118,6 +122,38 @@ persistent launchers still require an installed `ai-agent-launcher` on `PATH`.
 When a generated launcher runs, it changes to its stored worktree before
 delegating to the installed runtime. This keeps the launched agent and terminal
 multiplexer panes created from it in the selected worktree.
+
+## Create a launcher for an existing session
+
+When an existing agent session should be the launcher's initial session, pass
+its opaque reference while creating the launcher:
+
+```bash
+ai-agent-launcher launcher create ... --session-id SESSION_ID
+```
+
+This atomically creates the same pinned launcher that `launcher create`
+followed by `launcher pin --session-id SESSION_ID` would produce. Creation does
+not look up or validate the session; use `launcher adopt` when the session must
+be validated against the launcher's worktree.
+
+## Preparation helpers
+
+`--prepare PATH` records optional workspace setup for `launcher create`,
+`worktree new`, and `worktree stack`. The helper receives `--target` followed
+by the selected worktree path. An absolute path remains absolute; a relative
+path resolves from the selected target worktree, including normal `../...`
+traversal, and the generated launcher stores the resulting canonical absolute
+path.
+
+`launcher create` resolves its target worktree before writing a launcher, so
+its helper must already be an executable file. `worktree new` and `worktree
+stack` first create their Git worktree, then resolve and attempt the helper;
+this allows the helper to be tracked in the newly created worktree. At any
+later run or fork, unavailable, non-executable, or nonzero-exit helpers leave
+their own output visible, produce a warning, and do not block the agent or
+roll back an otherwise valid worktree. The helper remains configured and is
+retried on later operations after it is repaired.
 
 ## Create a worktree from another checkout
 
@@ -316,15 +352,22 @@ For a new distribution release:
 
 1. Maintain the matching Draft entry in the root [changelog](../../CHANGELOG.md)
    while the release scope changes.
-2. Finalize that entry with the release date, affected command-line entry
-   points, and externally meaningful changes.
-3. Update `project.version` in `pyproject.toml`.
-4. Run `make release-check`.
-5. Commit and push the reviewed product change.
-6. Create and push an annotated matching Git tag, for example
-   `git tag -a v0.1.2 -m "mikebd-py-scripts v0.1.2"` followed by
-   `git push origin v0.1.2`.
-7. Repeat the install and `--version` smoke test against the public tag in an
+2. From a clean, attached branch, run:
+
+   ```bash
+   make release-lock VERSION=X.Y.Z
+   ```
+
+   The repository-local helper finalizes the Draft entry, updates the project
+   and locked distribution versions, updates marked version examples, runs
+   `make release-check`, creates the release-lock commit, and pushes only
+   remotes where that branch is exactly one commit behind. To select a release
+   date explicitly, run
+   `uv run python scripts/dx/lock_release.py X.Y.Z --date YYYY-MM-DD`.
+3. Create and push an annotated matching Git tag, for example
+   `git tag -a vX.Y.Z -m "mikebd-py-scripts vX.Y.Z"` followed by
+   `git push origin vX.Y.Z`.
+4. Repeat the install and `--version` smoke test against the public tag in an
    isolated UV tool directory.
 
 No PyPI upload or GitHub Release object is part of this procedure.

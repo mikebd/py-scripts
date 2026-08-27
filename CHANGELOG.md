@@ -11,6 +11,35 @@ Its human-facing, reverse-chronological structure and change categories are
 informed by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 repository applies its own scoped release-note policy.
 
+## [v0.1.3] - 2026-08-27
+
+### Scope
+
+- repository release workflow
+- `ai-agent-launcher`
+
+### Added
+
+- `make release-lock VERSION=X.Y.Z` finalizes a matching Draft entry, updates
+  release-version examples, validates the tagged distribution, commits the
+  bounded release state, and pushes only a safe one-commit-ahead branch.
+- `make release-lock` validates each actual Git push destination before
+  publishing; if any destination is unsafe, it does not publish to that remote.
+- `ai-agent-launcher launcher create --session-id` atomically creates a
+  launcher pinned to a known existing session without a separate pin command.
+
+### Changed
+
+- Preparation helpers are best-effort runtime workspace setup. Relative helper
+  paths resolve from their target worktree, and later helper loss or failure
+  warns without blocking launcher execution, session forking, or worktree
+  creation.
+
+### Fixed
+
+- `launcher create`, `launcher pin`, and `launcher adopt` reject empty session
+  IDs with a command-line usage error.
+
 ## [v0.1.2] - 2026-08-26
 
 ### Scope

@@ -218,6 +218,7 @@ def _launcher_create(namespace: argparse.Namespace, lifecycle: LauncherLifecycle
         tuple(namespace.requested_writable_dirs),
         _optional_git_metadata_access(namespace.git_metadata_access),
         namespace.sandbox_mode,
+        session_id=namespace.session_id,
     )
     return 0
 
@@ -337,7 +338,12 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     create.add_argument("--agent", choices=agent_choices, required=True)
     create.add_argument("--launcher", type=Path, required=True)
     create.add_argument("--worktree-dir", type=Path, required=True)
-    create.add_argument("--prepare", dest="preparation_path", type=Path)
+    create.add_argument(
+        "--session-id",
+        type=_nonempty_session_id,
+        help="store an existing opaque session reference in the new launcher",
+    )
+    _add_preparation_argument(create)
     _add_directories_argument(create)
     _add_git_metadata_access_argument(create)
     _add_sandbox_mode_argument(create, registry)
@@ -353,7 +359,7 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
 
     pin = launcher_commands.add_parser("pin", help="pin a launcher to a session")
     pin.add_argument("--launcher", type=Path, required=True)
-    pin.add_argument("--session-id", required=True)
+    pin.add_argument("--session-id", required=True, type=_nonempty_session_id)
     pin.add_argument("--agent", choices=agent_choices)
     pin.add_argument("--replace", action="store_true")
 
@@ -375,7 +381,7 @@ def _add_launcher_parser(commands: _SubparserCommands, registry: AgentRegistry) 
 
     adopt = launcher_commands.add_parser("adopt", help="bind a launcher to an existing session")
     _add_source_target_arguments(adopt, agent_choices)
-    adopt.add_argument("--session-id", required=True)
+    adopt.add_argument("--session-id", required=True, type=_nonempty_session_id)
     _add_directories_argument(adopt)
     _remove_directories_argument(adopt)
     _add_git_metadata_access_argument(adopt)
@@ -445,7 +451,7 @@ def _launcher_sandbox_modes(registry: AgentRegistry) -> tuple[str, ...]:
 def _add_worktree_launcher_options(
     parser: argparse.ArgumentParser, registry: AgentRegistry
 ) -> None:
-    parser.add_argument("--prepare", dest="preparation_path", type=Path)
+    _add_preparation_argument(parser)
     _add_directories_argument(parser)
     _add_git_metadata_access_argument(parser)
     _add_sandbox_mode_argument(parser, registry)
@@ -459,6 +465,16 @@ def _add_git_metadata_access_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_preparation_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--prepare",
+        dest="preparation_path",
+        type=Path,
+        metavar="PATH",
+        help="run optional workspace preparation; relative paths resolve from the target worktree",
+    )
+
+
 def _add_source_target_arguments(parser: argparse.ArgumentParser, agent_choices: list[str]) -> None:
     parser.add_argument("--launcher", type=Path, required=True)
     parser.add_argument("--target-launcher", type=Path, required=True)
@@ -467,6 +483,12 @@ def _add_source_target_arguments(parser: argparse.ArgumentParser, agent_choices:
 
 def _optional_agent(value: str | None) -> AgentId | None:
     return AgentId(value) if value is not None else None
+
+
+def _nonempty_session_id(value: str) -> str:
+    if not value:
+        raise argparse.ArgumentTypeError("session ID must not be empty")
+    return value
 
 
 def _optional_git_metadata_access(value: str | None) -> GitMetadataAccess | None:

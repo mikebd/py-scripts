@@ -136,6 +136,60 @@ def test_launcher_creation_help_omits_marker(
     assert "--marker" not in capsys.readouterr().out
 
 
+def test_launcher_create_help_lists_session_id(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["launcher", "create", "--help"])
+
+    assert "--session-id" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        (
+            "launcher",
+            "create",
+            "--agent",
+            "codex",
+            "--launcher",
+            "/tmp/launcher",
+            "--worktree-dir",
+            "/tmp/worktree",
+            "--session-id",
+            "",
+        ),
+        ("launcher", "pin", "--launcher", "/tmp/launcher", "--session-id", ""),
+        (
+            "launcher",
+            "adopt",
+            "--launcher",
+            "/tmp/launcher",
+            "--target-launcher",
+            "/tmp/target-launcher",
+            "--session-id",
+            "",
+        ),
+    ),
+)
+def test_launcher_lifecycle_commands_reject_empty_session_ids(
+    arguments: tuple[str, ...], capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit, match="2"):
+        main(list(arguments))
+
+    assert "session ID must not be empty" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", ("new", "stack"))
+def test_worktree_creation_help_omits_session_id(
+    command: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["worktree", command, "--help"])
+
+    assert "--session-id" not in capsys.readouterr().out
+
+
 def test_launcher_create_rejects_removed_marker_option(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="2"):
         main(

@@ -59,10 +59,16 @@ def build_metadata(
     local_writable_dirs: tuple[str, ...],
     session_id: str | None = None,
     extensions: MetadataExtensions | None = None,
+    *,
+    validate_preparation: bool = True,
 ) -> LauncherMetadata:
     """Validate creation inputs and return canonical launcher metadata."""
     worktree_dir = resolve_worktree(str(worktree_argument))
-    preparation_path = _preparation_path(preparation_argument)
+    preparation_path = resolve_preparation_path(
+        preparation_argument,
+        worktree_dir,
+        require_executable=validate_preparation,
+    )
     directories = _canonical_directories(local_writable_dirs)
     session = SessionReference(agent_id, session_id) if session_id is not None else None
     return LauncherMetadata(
@@ -78,11 +84,11 @@ def build_metadata(
 def validate_launcher_creation_inputs(
     preparation_argument: str | Path | None,
     local_writable_dirs: tuple[str, ...],
-) -> Path | None:
-    """Validate launcher inputs that do not depend on an existing worktree."""
-    preparation_path = _preparation_path(preparation_argument)
+) -> None:
+    """Validate worktree-creation inputs that do not need the target to exist."""
+    if preparation_argument is not None:
+        _expanded_preparation_path(preparation_argument)
     _canonical_directories(local_writable_dirs)
-    return preparation_path
 
 
 def read_launcher(path_argument: str | Path) -> LauncherMetadata:
@@ -97,6 +103,7 @@ def read_launcher(path_argument: str | Path) -> LauncherMetadata:
             tuple(str(directory) for directory in artifact.local_writable_dirs),
             artifact.session.value if artifact.session is not None else None,
             artifact.extensions,
+            validate_preparation=False,
         )
     except (LauncherError, ValueError) as error:
         raise LauncherError(f"launcher metadata is invalid: {path}: {error}") from error
@@ -184,8 +191,8 @@ def write_launcher(
             'case "$0" in',
             '  /*) launcher_path="$0" ;;',
             (
-                "  *) launcher_path=\"$(CDPATH='' cd -P \"$(dirname \"$0\")\" && "
-                "pwd)/$(basename \"$0\")\" ;;"
+                '  *) launcher_path="$(CDPATH=\'\' cd -P "$(dirname "$0")" && '
+                'pwd)/$(basename "$0")" ;;'
             ),
             "esac",
             f"cd {shlex.quote(str(metadata.worktree_dir))}",
@@ -247,6 +254,7 @@ def update_local_directories(
         merged,
         artifact.session.value if artifact.session is not None else None,
         artifact.extensions,
+        validate_preparation=False,
     )
     return metadata, unmatched, bool(stored_set.intersection(removals))
 
@@ -379,13 +387,30 @@ def _encode_metadata(metadata: LauncherMetadata) -> str:
     )
 
 
-def _preparation_path(value: str | Path | None) -> Path | None:
+def resolve_preparation_path(
+    value: str | Path | None,
+    worktree_dir: Path,
+    *,
+    require_executable: bool,
+) -> Path | None:
+    """Resolve a helper path from its workspace and optionally validate availability."""
     if value is None:
         return None
-    path = Path(value).expanduser()
-    if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
-        raise LauncherError(f"preparation path is not an absolute executable file: {path}")
-    return path.resolve()
+    path = _expanded_preparation_path(value)
+    if not path.is_absolute():
+        path = worktree_dir / path
+    path = path.resolve(strict=False)
+    if require_executable and (not path.is_file() or not os.access(path, os.X_OK)):
+        raise LauncherError(f"preparation path is not an executable file: {path}")
+    return path
+
+
+def _expanded_preparation_path(value: str | Path) -> Path:
+    """Expand a preparation argument without resolving it from a worktree."""
+    try:
+        return Path(value).expanduser()
+    except RuntimeError as error:
+        raise LauncherError(f"preparation path cannot be expanded: {value}") from error
 
 
 def _artifact_path(value: str) -> Path:
@@ -422,9 +447,7 @@ def _canonical_removal_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
                 f"launcher local directory removal is not an absolute path: {raw_path}"
             ) from error
         if not path.is_absolute():
-            raise LauncherError(
-                f"launcher local directory removal is not an absolute path: {path}"
-            )
+            raise LauncherError(f"launcher local directory removal is not an absolute path: {path}")
         resolved = path.resolve(strict=False)
         if resolved not in directories:
             directories.append(resolved)

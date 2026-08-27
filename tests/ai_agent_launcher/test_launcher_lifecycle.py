@@ -237,6 +237,148 @@ def test_create_and_pin_preserve_versioned_metadata(
     assert pinned.value == "two"
 
 
+def test_launcher_create_stores_initial_session_without_lookup(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    executable = _fake_codex(tmp_path)
+    config_path = tmp_path / "config.toml"
+    _config(config_path, executable, tmp_path / "home")
+    launcher = tmp_path / "launcher"
+    output = tmp_path / "fake-codex.json"
+    monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--session-id",
+                "existing-session",
+            ]
+        )
+        == 0
+    )
+    session = read_launcher(launcher).session
+    assert session is not None
+    assert session.value == "existing-session"
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "describe",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    assert "session: existing-session" in capsys.readouterr().out
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "run",
+                "--launcher",
+                str(launcher),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(output.read_text(encoding="utf-8"))[0] == "resume"
+    assert json.loads(output.read_text(encoding="utf-8"))[-1] == "existing-session"
+
+
+def test_launcher_create_resolves_target_relative_preparation(
+    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    preparation = git_worktree / "scripts" / "prepare"
+    preparation.parent.mkdir()
+    preparation.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    preparation.chmod(0o755)
+    external = git_worktree.parent / "external-prepare"
+    external.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    external.chmod(0o755)
+    relative_launcher = tmp_path / "relative-launcher"
+    external_launcher = tmp_path / "external-launcher"
+    missing_launcher = tmp_path / "missing-launcher"
+
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(relative_launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--prepare",
+                "scripts/prepare",
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(relative_launcher).preparation_path == preparation.resolve()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(external_launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--prepare",
+                "../external-prepare",
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(external_launcher).preparation_path == external.resolve()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(missing_launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--prepare",
+                "scripts/missing",
+            ]
+        )
+        == 2
+    )
+    assert "preparation path is not an executable file" in capsys.readouterr().err
+    assert not missing_launcher.exists()
+
+
 def test_legacy_marker_metadata_is_ignored_and_dropped_when_rewritten(
     git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1556,6 +1698,197 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
     }
     assert capsys.readouterr().err == (
         f"warning: launcher-local writable directory is not stored: {unstored.resolve()}\n"
+    )
+
+
+def test_launcher_run_and_fork_continue_after_preparation_failure(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    executable = _fake_codex(tmp_path)
+    config_path = tmp_path / "config.toml"
+    home = tmp_path / "codex-home"
+    _config(config_path, executable, home)
+    preparation = tmp_path / "prepare"
+    preparation.write_text(
+        "#!/bin/sh\nprintf 'preparation diagnostic\\n' >&2\nexit 23\n",
+        encoding="utf-8",
+    )
+    preparation.chmod(0o755)
+    source = tmp_path / "source-launcher"
+    target = tmp_path / "target-launcher"
+    output = tmp_path / "fake-codex.json"
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(source),
+                "--worktree-dir",
+                str(git_worktree),
+                "--prepare",
+                str(preparation),
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "pin",
+                "--launcher",
+                str(source),
+                "--session-id",
+                "parent-session",
+            ]
+        )
+        == 0
+    )
+    capfd.readouterr()
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "run",
+                "--launcher",
+                str(source),
+                "--",
+                "continue",
+            ]
+        )
+        == 0
+    )
+    captured = capfd.readouterr()
+    assert "preparation diagnostic" in captured.err
+    assert (
+        f"warning: launcher preparation failed; continuing: {preparation.resolve()}: exit status 23"
+        in captured.err
+    )
+    assert json.loads(output.read_text(encoding="utf-8"))[-2:] == ["parent-session", "continue"]
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "fork",
+                "--launcher",
+                str(source),
+                "--target-launcher",
+                str(target),
+                "--",
+                "continue",
+            ]
+        )
+        == 0
+    )
+    assert target.is_file()
+    assert json.loads(output.read_text(encoding="utf-8"))[0] == "fork"
+    assert "preparation diagnostic" in capfd.readouterr().err
+
+    preparation.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "run",
+                "--launcher",
+                str(source),
+            ]
+        )
+        == 0
+    )
+    assert capfd.readouterr().err == ""
+
+    preparation.chmod(0o644)
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "run",
+                "--launcher",
+                str(source),
+            ]
+        )
+        == 0
+    )
+    assert (
+        f"warning: launcher preparation failed; continuing: {preparation.resolve()}"
+        in capfd.readouterr().err
+    )
+
+    preparation.unlink()
+    assert read_launcher(source).preparation_path == preparation.resolve(strict=False)
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "pin",
+                "--launcher",
+                str(source),
+                "--session-id",
+                "parent-session",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(source),
+                "--mode",
+                "read-only",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "run",
+                "--launcher",
+                str(source),
+                "--",
+                "continue",
+            ]
+        )
+        == 0
+    )
+    captured = capfd.readouterr()
+    assert (
+        f"warning: launcher preparation failed; continuing: {preparation.resolve()}" in captured.err
     )
 
 
