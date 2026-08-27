@@ -1,15 +1,39 @@
-"""Verify that the current source snapshot installs as a Git-tagged uv tool."""
+"""Validate release notes and a Git-tagged distribution installation through uv."""
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import tomllib
+from datetime import date
 from pathlib import Path
 from typing import cast
+
+_RELEASE_HEADING = re.compile(
+    r"^## \[v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)\] - "
+    r"(?P<status>Draft|\d{4}-\d{2}-\d{2})$"
+)
+_CHANGE_CATEGORIES = frozenset({"Added", "Changed", "Deprecated", "Fixed", "Removed", "Security"})
+
+
+class _ReleaseNote:
+    """One parsed release-note heading and its bounded Markdown section."""
+
+    def __init__(
+        self,
+        version: str,
+        status: str,
+        start: int,
+        end: int,
+    ) -> None:
+        self.version = version
+        self.status = status
+        self.start = start
+        self.end = end
 
 
 def _parse_args() -> argparse.Namespace:
@@ -50,6 +74,93 @@ def _version(root: Path) -> str:
     if not isinstance(version, str):
         raise RuntimeError("pyproject.toml must define project.version")
     return version
+
+
+def _validate_release_notes(root: Path, version: str) -> None:
+    """Require a finalized, complete release-note entry for one distribution version."""
+    path = root / "CHANGELOG.md"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise RuntimeError(f"unable to read release notes: {path}") from error
+
+    entries = _release_note_entries(lines)
+    matching = [entry for entry in entries if entry.version == version]
+    if not matching:
+        raise RuntimeError(f"release notes do not contain v{version}")
+    if len(matching) > 1:
+        raise RuntimeError(f"release notes contain duplicate v{version} entries")
+    entry = matching[0]
+    if entry.status == "Draft":
+        raise RuntimeError(f"release notes contain a draft for current version: v{version}")
+    _validate_release_date(entry)
+    _validate_release_entry(lines, entry)
+
+
+def _release_note_entries(lines: list[str]) -> tuple[_ReleaseNote, ...]:
+    headings: list[tuple[int, re.Match[str]]] = []
+    for index, line in enumerate(lines):
+        if not line.startswith("## ["):
+            continue
+        match = _RELEASE_HEADING.fullmatch(line)
+        if match is None:
+            raise RuntimeError(f"invalid release-note heading: {line}")
+        headings.append((index, match))
+
+    entries: list[_ReleaseNote] = []
+    previous_key: tuple[int, int, int] | None = None
+    for position, (start, match) in enumerate(headings):
+        version_key = (
+            int(match["major"]),
+            int(match["minor"]),
+            int(match["patch"]),
+        )
+        if previous_key is not None and previous_key <= version_key:
+            raise RuntimeError("release notes must be ordered newest to oldest")
+        end = headings[position + 1][0] if position + 1 < len(headings) else len(lines)
+        entries.append(
+            _ReleaseNote(
+                version=".".join(match[group] for group in ("major", "minor", "patch")),
+                status=match["status"],
+                start=start,
+                end=end,
+            )
+        )
+        previous_key = version_key
+    return tuple(entries)
+
+
+def _validate_release_date(entry: _ReleaseNote) -> None:
+    try:
+        date.fromisoformat(entry.status)
+    except ValueError as error:
+        raise RuntimeError(f"release notes have an invalid date for v{entry.version}") from error
+
+
+def _validate_release_entry(lines: list[str], entry: _ReleaseNote) -> None:
+    headings = [
+        (index, line.removeprefix("### "))
+        for index, line in enumerate(lines[entry.start + 1 : entry.end], start=entry.start + 1)
+        if line.startswith("### ")
+    ]
+    scope_headings = [index for index, heading in headings if heading == "Scope"]
+    if len(scope_headings) != 1 or not _section_has_bullet(lines, scope_headings[0], entry.end):
+        raise RuntimeError(f"release notes need a non-empty scope for v{entry.version}")
+    if not any(
+        _section_has_bullet(lines, index, entry.end)
+        for index, heading in headings
+        if heading in _CHANGE_CATEGORIES
+    ):
+        raise RuntimeError(f"release notes need a non-empty change category for v{entry.version}")
+
+
+def _section_has_bullet(lines: list[str], start: int, end: int) -> bool:
+    for line in lines[start + 1 : end]:
+        if line.startswith("### "):
+            return False
+        if line.startswith("- ") and line[2:].strip():
+            return True
+    return False
 
 
 def _source_paths(root: Path, environment: dict[str, str]) -> tuple[Path, ...]:
@@ -140,6 +251,7 @@ def main() -> int:
     arguments = _parse_args()
     root = Path(__file__).resolve().parents[1]
     version = _version(root)
+    _validate_release_notes(root, version)
     environment = _environment()
     with tempfile.TemporaryDirectory(prefix="ai-agent-launcher-release-") as temporary_directory:
         temporary = Path(temporary_directory)

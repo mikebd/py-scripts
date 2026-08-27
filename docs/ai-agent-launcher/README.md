@@ -3,34 +3,36 @@
 `ai-agent-launcher` creates and runs local AI coding-agent workspaces. The
 current supported adapter is `codex`; its runtime details remain adapter-owned.
 
-Its tool-specific durable choices are recorded in the
+Its component-specific durable choices are recorded in the
 [AI agent launcher decision records](adr/README.md).
 Repository-wide completion and distribution policy remains in
 [the repository ADR index](../adr/README.md).
 
 ## Agent runtime activation
 
-When configuring an AI coding agent to discover and select this tool, use the
+When configuring an AI coding agent to discover and select this command, use the
 [AI agent runtime activation guide](https://github.com/mikebd/ai-agent-skills/blob/main/shared/references/agent-runtime/AI_AGENT_LAUNCHER.md).
-It governs source selection, when an agent should prefer this tool, and how it
-uses runtime `--version` and `--help`. It is the canonical activation policy;
-this guide remains the tool's installation and usage reference.
+It governs source selection, when an agent should prefer this command, and how
+it uses runtime `--version` and `--help`. It is the canonical activation
+policy; this guide remains the command's installation and usage reference.
 
-## Install a tagged release for persistent launchers
+## Install the tagged distribution for persistent launchers
 
-This tool follows the repository's [Git-tag distribution default](../adr/0002-use-git-tag-distribution-until-pypi-is-justified.md),
-not PyPI. A generated launcher is a persistent shell shim: direct execution
+`ai-agent-launcher` is a command-line entry point of the `mikebd-py-scripts`
+distribution. That distribution follows the repository's [Git-tag distribution
+default](../adr/0002-use-git-tag-distribution-until-pypi-is-justified.md), not
+PyPI. A generated launcher is a persistent shell shim: direct execution
 requires `ai-agent-launcher` to be available on that process's `PATH`. Install
-the selected upstream release with:
+the selected upstream distribution release with:
 
 ```bash
-uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.1"
+uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.2"
 ```
 
 For a fork, replace the repository URL and keep the selected tag:
 
 ```bash
-uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.1"
+uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.2"
 ```
 
 Ensure the UV tool binary directory is on `PATH`. You may run
@@ -44,7 +46,8 @@ ai-agent-launcher --help
 ```
 
 To move to a selected newer tag, rerun `uv tool install --reinstall` with that
-tag. This replaces the installed tool with the requested source version.
+tag. This replaces the installed distribution with the requested source
+version.
 
 ## Direct CLI smoke test from an untagged checkout
 
@@ -58,7 +61,7 @@ uv run ai-agent-launcher --help
 Running `uv run ai-agent-launcher launcher create ...` does not install the
 command into the later generated launcher's `PATH`. Use the temporary
 installation below to test persistent-launcher behavior without replacing the
-normal installed tool.
+normal installed distribution.
 
 ## Temporarily install an untagged checkout
 
@@ -78,9 +81,9 @@ ai-agent-launcher --help
 
 Keep the temporary directory and its `PATH` entry for any generated-launcher
 smoke test. Remove the directory after restoring `PATH`. `make release-check`
-performs the corresponding temporary Git-tagged installation plus `--version`
-and `--help` checks automatically; it does not create or execute a generated
-launcher.
+validates the current release-note entry and performs the corresponding
+temporary Git-tagged distribution installation plus `--version` and `--help`
+checks automatically; it does not create or execute a generated launcher.
 
 ## Inspect a generated launcher
 
@@ -92,7 +95,7 @@ ai-agent-launcher launcher describe --launcher /path/to/launcher
 ```
 
 The command reports the artifact's format, selected agent, workspace, session
-state, marker, preparation helper, persisted metadata extensions, local
+state, preparation helper, persisted metadata extensions, local
 writable directories, and the best-effort effective writable-directory set for
 the current machine. It does not execute the launcher, invoke an agent, run
 preparation, or create cache directories. It reads the current configuration
@@ -112,6 +115,28 @@ uv run ai-agent-launcher launcher describe --launcher /path/to/launcher
 
 This diagnoses a launcher artifact but does not make that launcher executable;
 persistent launchers still require an installed `ai-agent-launcher` on `PATH`.
+When a generated launcher runs, it changes to its stored worktree before
+delegating to the installed runtime. This keeps the launched agent and terminal
+multiplexer panes created from it in the selected worktree.
+
+## Create a worktree from another checkout
+
+`worktree new` normally selects the repository containing the current working
+directory. Use `--source-worktree-dir` to select a different existing Git
+worktree instead:
+
+```bash
+ai-agent-launcher worktree new \
+  --agent codex \
+  --source-worktree-dir /path/to/source-checkout \
+  --worktree-dir /path/to/new-worktree \
+  --branch feature/example
+```
+
+The selected path chooses the repository only. The new worktree starts at that
+repository's primary-worktree `HEAD`, just as it does without the option. Use
+`--from REF` when a different start commit is required; the selected linked
+worktree's branch is never used implicitly.
 
 ## Configuration
 
@@ -164,6 +189,49 @@ That guidance is a reference for this default, not a restriction on users who
 choose the less strict `shared` policy for an individual launcher or their
 configuration.
 
+### Persisted sandbox settings
+
+Set an initial persisted sandbox mode while creating a launcher with
+`--sandbox-mode`. `launcher create`, `launcher fork`, `launcher adopt`,
+`worktree new`, and `worktree stack` support this option. It accepts the
+sandbox modes supported by the selected agent adapter; the current Codex
+adapter supports `read-only`, `workspace-write`, and `danger-full-access`.
+
+`launcher fork` and `launcher adopt` copy the source launcher's local writable
+directories and persisted sandbox mode unless explicitly overridden. Their
+repeatable `--remove-dir` option removes inherited launcher-local directories;
+an unmatched path warns but does not block creation. It cannot remove
+directories configured under `[core].writable_dirs` or directories added
+automatically by the selected adapter.
+
+Use `launcher sandbox` to update an existing launcher's Codex sandbox mode,
+add or remove launcher-local writable directories, or combine those updates
+atomically. Its shorter `--mode` option is local to that sandbox subcommand:
+
+```bash
+ai-agent-launcher launcher sandbox \
+  --launcher /path/to/launcher \
+  --mode workspace-write \
+  --add-dir /path/to/writable-directory \
+  --remove-dir /path/to/no-longer-needed-directory
+```
+
+`--add-dir` and `--remove-dir` are repeatable. Added directories must already
+exist and are stored as canonical absolute paths. Removal accepts a path that
+resolves to an absolute path, including `~/...`, even when the stored directory
+has since been deleted, so it can repair stale launcher metadata.
+
+At least one update is required: use `--mode`, one or more `--add-dir` or
+`--remove-dir` values, or a combination. `--mode` is optional when only
+changing directories. A directory requested for removal but not stored in
+launcher-local metadata produces a warning and does not prevent other updates.
+The command preserves the launcher's session and other persisted settings, does
+not start an agent, and affects only future launcher invocations. Without a
+persisted sandbox-mode override, a launcher continues to use its current
+`[agents.codex].sandbox` configuration value. Use `launcher describe` to
+inspect a persisted override under `codex.sandbox` and launcher-local
+directories.
+
 ## Codex-specific behavior
 
 The Codex adapter adds writable directories that are needed by its
@@ -172,7 +240,7 @@ local sandbox and the tools it may run. They are in addition to the generic
 
 | Source | Inclusion condition | Runtime behavior |
 | --- | --- | --- |
-| `[core].writable_dirs` | Each configured path | Must already be an existing directory. |
+| `[core].writable_dirs` | Each configured path, except one that strictly contains automatic Git metadata for the launched worktree | Must already be an existing directory. The Codex adapter omits that overlapping configured root to avoid a Codex sandbox conflict with the launched worktree's automatic Git metadata. Other configured roots remain available for unrelated worktrees. |
 | Launcher-local `--add-dir` entries | Each path stored in launcher metadata | Must already be an existing directory. |
 | `<worktree>/.context` | The directory exists | Added when present. |
 | Git directory | The launcher worktree has resolvable Git metadata | Adds the worktree-specific directory from `git rev-parse --git-dir`. |
@@ -181,12 +249,16 @@ local sandbox and the tools it may run. They are in addition to the generic
 | Go module cache | `go` is on `PATH`; path from `go env GOMODCACHE` | The reported cache directory is created when needed. |
 | GolangCI-Lint cache | `golangci-lint` is on `PATH` | Uses `$GOLANGCI_LINT_CACHE`, then `$XDG_CACHE_HOME/golangci-lint`, then `$HOME/.cache/golangci-lint`; the directory is created when needed. |
 
-Duplicates are removed. Runtime ordering remains adapter-owned: configured
-directories, launcher-local directories, optional `.context`, Git metadata,
-then available tool caches. `ai-agent-launcher launcher describe` presents a
-sorted, best-effort view for diagnosis; it does not create caches, start an
-agent, or run launcher preparation. Unavailable configuration, worktree, Git,
-or tool sources appear as notes beside the stored launcher metadata.
+Duplicates are removed. The Codex adapter also omits a configured root that
+would strictly contain automatic Git metadata for the launched worktree; this
+avoids a Codex sandbox conflict with the launched worktree's automatic Git
+metadata while retaining configured roots for unrelated worktrees. Runtime
+ordering remains adapter-owned: configured directories, launcher-local
+directories, optional `.context`, Git metadata, then available tool caches.
+`ai-agent-launcher launcher describe` presents a sorted, best-effort view for
+diagnosis; it does not create caches, start an agent, or run launcher
+preparation. Unavailable or omitted configuration, worktree, Git, or tool
+sources appear as notes beside the stored launcher metadata.
 
 Only the configured and launcher-local inputs are agent-neutral. The automatic
 additions above are current Codex behavior and are not a contract for future
@@ -240,15 +312,19 @@ the reloaded completion index includes the newly generated file.
 
 ## Release procedure
 
-For a new release version:
+For a new distribution release:
 
-1. Update `project.version` in `pyproject.toml`.
-2. Run `make release-check`.
-3. Commit and push the reviewed product change.
-4. Create and push an annotated matching Git tag, for example
-   `git tag -a v0.1.1 -m "ai-agent-launcher v0.1.1"` followed by
-   `git push origin v0.1.1`.
-5. Repeat the install and `--version` smoke test against the public tag in an
+1. Maintain the matching Draft entry in the root [changelog](../../CHANGELOG.md)
+   while the release scope changes.
+2. Finalize that entry with the release date, affected command-line entry
+   points, and externally meaningful changes.
+3. Update `project.version` in `pyproject.toml`.
+4. Run `make release-check`.
+5. Commit and push the reviewed product change.
+6. Create and push an annotated matching Git tag, for example
+   `git tag -a v0.1.2 -m "mikebd-py-scripts v0.1.2"` followed by
+   `git push origin v0.1.2`.
+7. Repeat the install and `--version` smoke test against the public tag in an
    isolated UV tool directory.
 
 No PyPI upload or GitHub Release object is part of this procedure.

@@ -1,6 +1,7 @@
 """Agent-neutral runtime context and Git worktree validation."""
 
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,9 +18,10 @@ class RunContext:
     requested_writable_dirs: tuple[str, ...]
     passthrough_args: tuple[str, ...]
     git_metadata_access: GitMetadataAccess = GitMetadataAccess.WORKTREE
+    launcher_extensions: Mapping[str, Mapping[str, object]] | None = None
 
 
-def resolve_worktree(worktree_argument: str | None) -> Path:
+def resolve_worktree(worktree_argument: str | Path | None) -> Path:
     """Resolve an existing directory to the top-level directory of its Git worktree."""
     candidate = Path.cwd() if worktree_argument is None else Path(worktree_argument).expanduser()
     if not candidate.is_dir():

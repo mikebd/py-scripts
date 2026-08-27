@@ -14,10 +14,11 @@ takes effect immediately; do not wait for a restart or manual reminder.
 Before changing a durable public CLI contract, completion policy, adapter/core
 boundary, configuration model, or distribution policy, read the applicable
 decision-record guide and relevant records. `docs/adr/` governs reusable
-repository-wide policy; a tool-local decision-record area governs decisions
-that apply only to that tool. Add a record at the matching scope when a change
-establishes, reverses, or materially changes such a decision; do not create
-records for routine implementation details or temporary tracking.
+repository-wide policy; a component-local decision-record area governs
+decisions that apply only to that component. Add a record at the matching
+scope when a change establishes, reverses, or materially changes such a
+decision; do not create records for routine implementation details or
+temporary tracking.
 
 ## Validation
 

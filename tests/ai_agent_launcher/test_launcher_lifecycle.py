@@ -19,6 +19,7 @@ from ai_agent_launcher._launchers import (
     read_launcher,
     read_launcher_artifact,
     replace_session,
+    with_metadata_extension,
     write_launcher,
 )
 from ai_agent_launcher._models import AgentId, GitMetadataAccess
@@ -84,7 +85,7 @@ def _fake_codex(tmp_path: Path) -> Path:
     return executable
 
 
-def _config(path: Path, executable: Path, home: Path) -> None:
+def _config(path: Path, executable: Path, home: Path, sandbox: str = "workspace-write") -> None:
     path.write_text(
         "\n".join(
             (
@@ -94,6 +95,7 @@ def _config(path: Path, executable: Path, home: Path) -> None:
                 "[agents.codex]",
                 f'executable = "{executable}"',
                 f'home = "{home}"',
+                f'sandbox = "{sandbox}"',
                 "use_rtk = false",
             )
         ),
@@ -137,7 +139,7 @@ def test_launcher_run_and_fork_report_unknown_adapter(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     source = tmp_path / "source-launcher"
     target = tmp_path / "target-launcher"
-    metadata = build_metadata(AgentId("other"), git_worktree, "# generated launcher", None, ())
+    metadata = build_metadata(AgentId("other"), git_worktree, None, ())
     write_launcher(source, replace_session(metadata, "parent-session"))
 
     assert main(["launcher", "run", "--launcher", str(source)]) == 2
@@ -182,8 +184,6 @@ def test_create_and_pin_preserve_versioned_metadata(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(local_dir),
             ]
@@ -192,13 +192,22 @@ def test_create_and_pin_preserve_versioned_metadata(
     )
     assert launcher.stat().st_mode & 0o777 == 0o700
     content = launcher.read_text(encoding="utf-8")
-    assert 'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"' in content
+    assert 'exec ai-agent-launcher launcher run --launcher "$launcher_path" -- "$@"' in content
+    assert "CDPATH='' cd -P" in content
     assert (
         "# Inspect metadata with: ai-agent-launcher launcher describe "
         "--launcher <launcher-path>" in content
     )
     assert read_launcher(launcher).session is None
     artifact = read_launcher_artifact(launcher)
+    metadata_line = next(
+        line
+        for line in content.splitlines()
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    encoded = metadata_line.removeprefix("# ai-agent-launcher-metadata-v1: ")
+    payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    assert "marker" not in payload
     assert artifact.extensions == {"core": {"git_metadata_access": "worktree"}}
     assert launcher_git_metadata_access(artifact) is GitMetadataAccess.WORKTREE
 
@@ -226,6 +235,591 @@ def test_create_and_pin_preserve_versioned_metadata(
     pinned = read_launcher(launcher).session
     assert pinned is not None
     assert pinned.value == "two"
+
+
+def test_legacy_marker_metadata_is_ignored_and_dropped_when_rewritten(
+    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 0
+    )
+
+    lines = launcher.read_text(encoding="utf-8").splitlines()
+    metadata_index = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    encoded = lines[metadata_index].removeprefix("# ai-agent-launcher-metadata-v1: ")
+    payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+    payload["marker"] = {"legacy": ["ignored", True]}
+    replacement = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    lines.insert(2, "# legacy marker")
+    lines[metadata_index + 1] = f"# ai-agent-launcher-metadata-v1: {replacement}"
+    launcher.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert read_launcher(launcher).session is None
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
+    assert "marker:" not in capsys.readouterr().out
+
+    assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "one"]) == 0
+    rewritten = launcher.read_text(encoding="utf-8")
+    assert "# legacy marker" not in rewritten
+    rewritten_line = next(
+        line
+        for line in rewritten.splitlines()
+        if line.startswith("# ai-agent-launcher-metadata-v1: ")
+    )
+    rewritten_encoded = rewritten_line.removeprefix("# ai-agent-launcher-metadata-v1: ")
+    rewritten_payload = json.loads(
+        base64.urlsafe_b64decode(rewritten_encoded + "=" * (-len(rewritten_encoded) % 4))
+    )
+    assert "marker" not in rewritten_payload
+    rewritten_metadata = read_launcher_artifact(launcher)
+    assert rewritten_metadata.session is not None
+    assert rewritten_metadata.session.value == "one"
+
+
+def test_launcher_metadata_rejects_unknown_v1_key(git_worktree: Path, tmp_path: Path) -> None:
+    launcher = tmp_path / "launcher"
+    payload: dict[str, object] = {
+        "agent_id": "codex",
+        "format_version": 1,
+        "local_writable_dirs": [],
+        "preparation_path": None,
+        "session_id": None,
+        "unexpected": True,
+        "worktree_dir": str(git_worktree),
+    }
+    encoded = (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    launcher.write_text(
+        "\n".join(
+            (
+                "#!/bin/sh",
+                f"# ai-agent-launcher-metadata-v1: {encoded}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LauncherError, match="unsupported launcher metadata version"):
+        read_launcher_artifact(launcher)
+
+
+def test_launcher_sandbox_updates_persisted_mode_and_directories(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    executable = _fake_codex(tmp_path)
+    output = tmp_path / "output.json"
+    config_path = tmp_path / "config.toml"
+    _config(config_path, executable, tmp_path / "home", sandbox="read-only")
+    inherited = tmp_path / "inherited"
+    added = tmp_path / "added"
+    removed = tmp_path / "removed"
+    inherited.mkdir()
+    added.mkdir()
+    removed.mkdir()
+    launcher = tmp_path / "launcher"
+    monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--add-dir",
+                str(inherited),
+                "--add-dir",
+                str(removed),
+            ]
+        )
+        == 0
+    )
+    assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "parent"]) == 0
+    metadata = with_metadata_extension(read_launcher(launcher), "custom", "enabled", True)
+    write_launcher(launcher, metadata, replace=True, mode=0o750)
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--mode",
+                "workspace-write",
+                "--add-dir",
+                str(inherited),
+                "--add-dir",
+                str(added),
+                "--remove-dir",
+                str(removed),
+            ]
+        )
+        == 0
+    )
+
+    updated = read_launcher(launcher)
+    assert updated.session is not None
+    assert updated.session.value == "parent"
+    assert updated.local_writable_dirs == (inherited.resolve(), added.resolve())
+    assert updated.extensions == {
+        "codex": {"sandbox": "workspace-write"},
+        "core": {"git_metadata_access": "worktree"},
+        "custom": {"enabled": True},
+    }
+    assert launcher.stat().st_mode & 0o777 == 0o750
+
+    assert main(["--config", str(config_path), "launcher", "run", "--launcher", str(launcher)]) == 0
+    invocation = json.loads(output.read_text(encoding="utf-8"))
+    assert invocation[:3] == ["resume", "--sandbox", "workspace-write"]
+    assert str(removed.resolve()) not in invocation
+    assert invocation[-1] == "parent"
+
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
+    assert '  - codex.sandbox: "workspace-write"' in capsys.readouterr().out
+
+
+def test_launcher_sandbox_removes_home_relative_directory(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    directory = home / "scratch"
+    directory.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    launcher = tmp_path / "launcher"
+
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--add-dir",
+                "~/scratch",
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == (directory.resolve(),)
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                "~/scratch",
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == ()
+
+
+def test_launcher_sandbox_directory_update_retains_configured_mode(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    executable = _fake_codex(tmp_path)
+    output = tmp_path / "output.json"
+    config_path = tmp_path / "config.toml"
+    _config(config_path, executable, tmp_path / "home", sandbox="read-only")
+    added = tmp_path / "added"
+    added.mkdir()
+    launcher = tmp_path / "launcher"
+    monkeypatch.setenv("FAKE_CODEX_OUTPUT", str(output))
+    _disable_optional_cache_tools(monkeypatch)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--add-dir",
+                str(added),
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).extensions == {"core": {"git_metadata_access": "worktree"}}
+
+    assert main(["--config", str(config_path), "launcher", "run", "--launcher", str(launcher)]) == 0
+    assert json.loads(output.read_text(encoding="utf-8"))[:3] == [
+        "--sandbox",
+        "read-only",
+        "--add-dir",
+    ]
+
+
+def test_launcher_sandbox_removes_stale_local_directories(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--add-dir",
+                str(first),
+                "--add-dir",
+                str(second),
+            ]
+        )
+        == 0
+    )
+    first.rmdir()
+    second.rmdir()
+
+    with pytest.raises(LauncherError, match="launcher metadata is invalid"):
+        read_launcher(launcher)
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                str(first),
+                "--remove-dir",
+                str(second),
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == ()
+
+
+def test_launcher_sandbox_does_not_rewrite_for_unstored_removal(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    launcher = tmp_path / "launcher"
+    missing = tmp_path / "missing"
+    added = tmp_path / "added"
+    added.mkdir()
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 0
+    )
+    original = launcher.read_bytes()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                str(missing),
+            ]
+        )
+        == 0
+    )
+    assert launcher.read_bytes() == original
+    assert capsys.readouterr().err == (
+        f"warning: launcher-local writable directory is not stored: {missing.resolve()}\n"
+    )
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--add-dir",
+                str(added),
+                "--remove-dir",
+                str(missing),
+            ]
+        )
+        == 0
+    )
+    assert read_launcher(launcher).local_writable_dirs == (added.resolve(),)
+    assert capsys.readouterr().err == (
+        f"warning: launcher-local writable directory is not stored: {missing.resolve()}\n"
+    )
+
+
+def test_launcher_sandbox_rejects_invalid_directory_updates_without_rewriting(
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    launcher = tmp_path / "launcher"
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 0
+    )
+    original = launcher.read_bytes()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--add-dir",
+                str(directory),
+                "--remove-dir",
+                str(directory),
+            ]
+        )
+        == 2
+    )
+    assert launcher.read_bytes() == original
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                "~missing-user/path",
+            ]
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert (
+        "launcher local directory removal is not an absolute path: ~missing-user/path"
+        in captured.err
+    )
+    assert "Traceback" not in captured.err
+    assert launcher.read_bytes() == original
+
+
+def test_launcher_sandbox_preserves_invalid_stale_entries_not_removed(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    removed = tmp_path / "removed"
+    retained = tmp_path / "retained"
+    removed.mkdir()
+    retained.mkdir()
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+                "--add-dir",
+                str(removed),
+                "--add-dir",
+                str(retained),
+            ]
+        )
+        == 0
+    )
+    removed.rmdir()
+    retained.rmdir()
+    original = launcher.read_bytes()
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                str(removed),
+            ]
+        )
+        == 2
+    )
+    assert launcher.read_bytes() == original
+
+
+def test_launcher_sandbox_rejects_empty_or_invalid_updates_without_rewriting(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    launcher = tmp_path / "launcher"
+    assert (
+        main(
+            [
+                "launcher",
+                "create",
+                "--agent",
+                "codex",
+                "--launcher",
+                str(launcher),
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 0
+    )
+    original = launcher.read_bytes()
+
+    with pytest.raises(SystemExit, match="2"):
+        main(["launcher", "sandbox", "--launcher", str(launcher)])
+    assert launcher.read_bytes() == original
+
+    with pytest.raises(SystemExit, match="2"):
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--mode",
+                "not-a-sandbox-mode",
+            ]
+        )
+    assert launcher.read_bytes() == original
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--add-dir",
+                str(tmp_path / "missing"),
+            ]
+        )
+        == 2
+    )
+    assert launcher.read_bytes() == original
+
+    assert (
+        main(
+            [
+                "launcher",
+                "sandbox",
+                "--launcher",
+                str(launcher),
+                "--remove-dir",
+                "relative",
+            ]
+        )
+        == 2
+    )
+    assert launcher.read_bytes() == original
 
 
 def test_describe_reports_effective_dirs_and_degrades(
@@ -269,8 +863,6 @@ def test_describe_reports_effective_dirs_and_degrades(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--prepare",
                 str(preparation),
                 "--add-dir",
@@ -316,7 +908,6 @@ def test_describe_reports_effective_dirs_and_degrades(
             "agent: codex",
             f"worktree: {git_worktree.resolve()}",
             "session: parent-session",
-            "marker: # launcher marker",
             f"preparation: {preparation.resolve()}",
             "git metadata access: worktree",
             "metadata extensions:",
@@ -380,8 +971,6 @@ def test_launcher_create_uses_configured_or_explicit_git_metadata_access(
                 str(configured),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -401,8 +990,6 @@ def test_launcher_create_uses_configured_or_explicit_git_metadata_access(
                 str(explicit),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--git-metadata-access",
                 "worktree",
             ]
@@ -413,7 +1000,7 @@ def test_launcher_create_uses_configured_or_explicit_git_metadata_access(
 
 
 def test_legacy_launcher_uses_implicit_worktree_access_without_rewrite(
-    git_worktree: Path, tmp_path: Path
+    git_worktree: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     launcher = tmp_path / "launcher"
     assert (
@@ -427,8 +1014,6 @@ def test_legacy_launcher_uses_implicit_worktree_access_without_rewrite(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -457,6 +1042,8 @@ def test_legacy_launcher_uses_implicit_worktree_access_without_rewrite(
         launcher_git_metadata_access(read_launcher_artifact(launcher)) is GitMetadataAccess.WORKTREE
     )
     assert launcher.read_text(encoding="utf-8") == legacy_content
+    assert main(["launcher", "describe", "--launcher", str(launcher)]) == 0
+    assert "git metadata access: worktree (default)" in capsys.readouterr().out
     assert main(["launcher", "pin", "--launcher", str(launcher), "--session-id", "one"]) == 0
 
     lines = launcher.read_text(encoding="utf-8").splitlines()
@@ -484,8 +1071,6 @@ def test_pin_preserves_unknown_metadata_extensions(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -532,8 +1117,6 @@ def test_describe_degrades_when_configuration_is_unavailable(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -596,8 +1179,6 @@ def test_describe_sorts_local_and_effective_writable_directories(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--add-dir",
                 str(local_z),
                 "--add-dir",
@@ -703,8 +1284,6 @@ def test_describe_rejects_unsupported_metadata_version(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -749,10 +1328,16 @@ def test_describe_rejects_non_generated_launcher(
 def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Path) -> None:
     launcher = tmp_path / "launcher"
     capture = tmp_path / "capture"
+    working_directory = tmp_path / "working-directory"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     command = bin_dir / "ai-agent-launcher"
-    command.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$LAUNCHER_CAPTURE"\n', encoding="utf-8")
+    command.write_text(
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$LAUNCHER_CAPTURE"\n'
+        'printf \'%s\\n\' "$PWD" > "$LAUNCHER_WORKING_DIRECTORY"\n',
+        encoding="utf-8",
+    )
     command.chmod(0o755)
     assert (
         main(
@@ -765,27 +1350,31 @@ def test_generated_shim_delegates_through_path(git_worktree: Path, tmp_path: Pat
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
     )
 
     environment = os.environ | {
-        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "PATH": f"{launcher.parent}:{bin_dir}:{os.environ['PATH']}",
         "LAUNCHER_CAPTURE": str(capture),
+        "LAUNCHER_WORKING_DIRECTORY": str(working_directory),
     }
-    subprocess.run(["/bin/sh", str(launcher), "continue"], check=True, env=environment)
-
-    assert capture.read_text(encoding="utf-8").splitlines() == [
-        "launcher",
-        "run",
-        "--launcher",
-        str(launcher),
-        "--",
-        "continue",
-    ]
+    for arguments, cwd in (
+        ((str(launcher), "continue"), None),
+        ((f"./{launcher.name}", "continue"), launcher.parent),
+        ((launcher.name, "continue"), git_worktree),
+    ):
+        subprocess.run(arguments, check=True, cwd=cwd, env=environment)
+        assert capture.read_text(encoding="utf-8").splitlines() == [
+            "launcher",
+            "run",
+            "--launcher",
+            str(launcher),
+            "--",
+            "continue",
+        ]
+        assert working_directory.read_text(encoding="utf-8").strip() == str(git_worktree)
 
 
 def test_run_uses_pinned_session_through_codex_adapter(
@@ -814,8 +1403,6 @@ def test_run_uses_pinned_session_through_codex_adapter(
                 str(launcher),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
             ]
         )
         == 0
@@ -856,7 +1443,10 @@ def test_run_uses_pinned_session_through_codex_adapter(
 
 
 def test_fork_prepares_worktree_and_creates_child_launcher(
-    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    git_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     executable = _fake_codex(tmp_path)
     config_path = tmp_path / "config.toml"
@@ -866,8 +1456,11 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
     target = tmp_path / "target-launcher"
     inherited = tmp_path / "inherited"
     added = tmp_path / "added"
+    removed = tmp_path / "removed"
+    unstored = tmp_path / "unstored"
     inherited.mkdir()
     added.mkdir()
+    removed.mkdir()
     preparation = tmp_path / "prepare"
     prepared = tmp_path / "prepared"
     preparation.write_text('#!/bin/sh\nprintf \'%s\' "$2" > "$PREPARED_OUTPUT"\n', encoding="utf-8")
@@ -891,12 +1484,14 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
                 str(source),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
                 "--prepare",
                 str(preparation),
                 "--add-dir",
                 str(inherited),
+                "--add-dir",
+                str(removed),
+                "--sandbox-mode",
+                "read-only",
             ]
         )
         == 0
@@ -931,6 +1526,12 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
                 str(inherited),
                 "--add-dir",
                 str(added),
+                "--remove-dir",
+                str(removed),
+                "--remove-dir",
+                str(unstored),
+                "--sandbox-mode",
+                "danger-full-access",
                 "--",
                 "continue",
             ]
@@ -944,6 +1545,18 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
     assert target_metadata.session is not None
     assert target_metadata.session.value == "child-session"
     assert target_metadata.local_writable_dirs == (inherited.resolve(), added.resolve())
+    assert target_metadata.extensions == {
+        "codex": {"sandbox": "danger-full-access"},
+        "core": {"git_metadata_access": "worktree"},
+    }
+    assert read_launcher(source).local_writable_dirs == (inherited.resolve(), removed.resolve())
+    assert read_launcher(source).extensions == {
+        "codex": {"sandbox": "read-only"},
+        "core": {"git_metadata_access": "worktree"},
+    }
+    assert capsys.readouterr().err == (
+        f"warning: launcher-local writable directory is not stored: {unstored.resolve()}\n"
+    )
 
 
 def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
@@ -970,6 +1583,12 @@ def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
     _config(config_path, tmp_path / "unused-codex", home)
     source = tmp_path / "source-launcher"
     target = tmp_path / "target-launcher"
+    inherited = tmp_path / "inherited"
+    added = tmp_path / "added"
+    removed = tmp_path / "removed"
+    inherited.mkdir()
+    added.mkdir()
+    removed.mkdir()
     assert (
         main(
             [
@@ -983,8 +1602,10 @@ def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
                 str(source),
                 "--worktree-dir",
                 str(git_worktree),
-                "--marker",
-                "# launcher marker",
+                "--add-dir",
+                str(inherited),
+                "--add-dir",
+                str(removed),
             ]
         )
         == 0
@@ -1018,9 +1639,23 @@ def test_adopt_requires_same_worktree_and_reports_parent_mismatch(
                 str(target),
                 "--session-id",
                 "existing-session",
+                "--add-dir",
+                str(added),
+                "--remove-dir",
+                str(removed),
+                "--sandbox-mode",
+                "read-only",
             ]
         )
         == 0
     )
     assert "unrelated-parent" in capsys.readouterr().out
-    assert read_launcher(target).session is not None
+    target_metadata = read_launcher(target)
+    assert target_metadata.session is not None
+    assert target_metadata.session.value == "existing-session"
+    assert target_metadata.local_writable_dirs == (inherited.resolve(), added.resolve())
+    assert target_metadata.extensions == {
+        "codex": {"sandbox": "read-only"},
+        "core": {"git_metadata_access": "worktree"},
+    }
+    assert read_launcher(source).local_writable_dirs == (inherited.resolve(), removed.resolve())

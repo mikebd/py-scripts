@@ -48,3 +48,4 @@ None.
 
 - [0002: Use XDG TOML configuration with core and agent namespaces](0002-use-xdg-toml-configuration-with-core-and-agent-namespaces.md)
 - [0003: Use versioned self-describing generated launcher artifacts](0003-use-versioned-self-describing-generated-launcher-artifacts.md)
+- [0005: Use adapter-owned persisted launcher sandbox overrides](0005-use-adapter-owned-persisted-launcher-sandbox-overrides.md)

@@ -38,22 +38,22 @@ class WorktreeLifecycle:
         branch: str | None,
         from_ref: str | None,
         launcher_argument: Path | None,
-        marker: str,
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
+        source_worktree_argument: Path | None = None,
+        sandbox_mode: str | None = None,
     ) -> CreatedWorktree:
-        """Create one explicit target worktree from a primary-worktree ref."""
-        source = resolve_worktree(None)
+        """Create one explicit target worktree from a selected repository's primary ref."""
+        source = resolve_worktree(source_worktree_argument)
         primary = self._primary_worktree(source)
         target = self._target_worktree(worktree_argument)
         target_branch = branch or target.name
         self._validate_branch(target_branch)
         start_ref = self._resolve_commit(primary, from_ref or "HEAD")
         launcher = self._launcher_path(agent_id, target.name, launcher_argument)
-        preparation = validate_launcher_creation_inputs(
-            marker, preparation_argument, local_writable_dirs
-        )
+        preparation = validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
+        self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(primary, target, target_branch, launcher)
         return self._create(
             primary,
@@ -62,20 +62,20 @@ class WorktreeLifecycle:
             target_branch,
             start_ref,
             launcher,
-            marker,
             preparation,
             local_writable_dirs,
             git_metadata_access,
+            sandbox_mode,
         )
 
     def stack(
         self,
         agent_id: AgentId,
         suffix: str,
-        marker: str,
         preparation_argument: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
+        sandbox_mode: str | None = None,
     ) -> CreatedWorktree:
         """Create strict sibling targets from the current attached worktree HEAD."""
         self._validate_suffix(suffix)
@@ -86,9 +86,8 @@ class WorktreeLifecycle:
         self._validate_branch(target_branch)
         start_ref = self._resolve_commit(source, "HEAD")
         launcher = self._launcher_path(agent_id, target.name, None)
-        preparation = validate_launcher_creation_inputs(
-            marker, preparation_argument, local_writable_dirs
-        )
+        preparation = validate_launcher_creation_inputs(preparation_argument, local_writable_dirs)
+        self._launchers.validate_creation(agent_id, sandbox_mode)
         self._preflight(source, target, target_branch, launcher)
         return self._create(
             source,
@@ -97,10 +96,10 @@ class WorktreeLifecycle:
             target_branch,
             start_ref,
             launcher,
-            marker,
             preparation,
             local_writable_dirs,
             git_metadata_access,
+            sandbox_mode,
         )
 
     def _create(
@@ -111,10 +110,10 @@ class WorktreeLifecycle:
         branch: str,
         start_ref: str,
         launcher: Path,
-        marker: str,
         preparation: Path | None,
         local_writable_dirs: tuple[str, ...],
         git_metadata_access: GitMetadataAccess | None,
+        sandbox_mode: str | None,
     ) -> CreatedWorktree:
         created = False
         try:
@@ -134,10 +133,10 @@ class WorktreeLifecycle:
                 agent_id,
                 launcher,
                 target,
-                marker,
                 preparation,
                 local_writable_dirs,
                 git_metadata_access,
+                sandbox_mode,
             )
         except BaseException:
             if created:

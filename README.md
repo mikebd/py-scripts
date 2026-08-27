@@ -15,6 +15,7 @@ only, cask support for `macOS` may be added in the future.
 - [Available Scripts](#available-scripts)
 - [Development](#development)
   - [Architecture Decisions](#architecture-decisions)
+  - [Release Notes](#release-notes)
 
 ## Requirements
 
@@ -118,6 +119,13 @@ into permanent architecture policy. Accepted records retain their original
 decision; later clarifications are dated amendments, while material changes
 use a new superseding record.
 
+### Release Notes
+
+Tagged distribution releases and their affected command-line entry points are
+recorded in the reverse-chronological [changelog](CHANGELOG.md). Draft entries
+accumulate the externally meaningful scope of a planned release; published
+entries retain their factual release record.
+
 ### Branch Context
 
 This repository's optional Branch Context is maintained on the [`py-scripts-context` branch](https://github.com/mikebd/public-branch-context/tree/py-scripts-context) of the public Branch Context repository. It provides branch-scoped working context for coding-agent workflows, including resumability, decision traceability, handoffs, and reproducible investigations.
@@ -147,5 +155,5 @@ within the project environment.
 | `make format`        | Format code with `ruff`                       |
 | `make fmt`           | Fix, format, and run all checks (convenience) |
 | `make build`         | Build source and wheel distributions          |
-| `make release-check` | Validate a clean Git-tagged tool installation |
+| `make release-check` | Validate release notes and a clean Git-tagged distribution installation |
 | `make all`           | Run all non-mutating checks                   |

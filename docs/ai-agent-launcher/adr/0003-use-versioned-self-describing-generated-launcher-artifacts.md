@@ -54,3 +54,4 @@ None.
 ## Related ADRs
 
 - [0004: Use inspectable optional launcher metadata extensions](0004-use-inspectable-optional-launcher-metadata-extensions.md)
+- [0005: Use adapter-owned persisted launcher sandbox overrides](0005-use-adapter-owned-persisted-launcher-sandbox-overrides.md)

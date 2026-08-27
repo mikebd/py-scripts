@@ -87,7 +87,7 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
     preparation.write_text('#!/bin/sh\nprintf "%s" "$2" > "$PREPARED_OUTPUT"\n', encoding="utf-8")
     preparation.chmod(0o755)
     monkeypatch.setenv("PREPARED_OUTPUT", str(prepared))
-    monkeypatch.chdir(source)
+    monkeypatch.chdir(tmp_path)
 
     default_target = tmp_path / "new-default"
     assert (
@@ -101,14 +101,16 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
                 "codex",
                 "--worktree-dir",
                 str(default_target),
+                "--source-worktree-dir",
+                str(source),
                 "--branch",
                 "feature/new-default",
-                "--marker",
-                "# generated launcher",
                 "--prepare",
                 str(preparation),
                 "--add-dir",
                 str(local_directory),
+                "--sandbox-mode",
+                "read-only",
             ]
         )
         == 0
@@ -119,6 +121,10 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
     assert metadata.session is None
     assert metadata.local_writable_dirs == (local_directory.resolve(),)
     assert launcher_git_metadata_access(metadata) is GitMetadataAccess.SHARED
+    assert metadata.extensions == {
+        "codex": {"sandbox": "read-only"},
+        "core": {"git_metadata_access": "shared"},
+    }
     assert "default session: none" in capsys.readouterr().out
 
     explicit_target = tmp_path / "new-explicit"
@@ -134,12 +140,12 @@ def test_new_uses_primary_head_by_default_and_accepts_explicit_start_ref(
                 "codex",
                 "--worktree-dir",
                 str(explicit_target),
+                "--source-worktree-dir",
+                str(source),
                 "--from",
                 "feature/source",
                 "--launcher",
                 str(explicit_launcher),
-                "--marker",
-                "# generated launcher",
                 "--git-metadata-access",
                 "worktree",
             ]
@@ -177,10 +183,10 @@ def test_stack_derives_strict_sibling_targets_from_committed_source_head(
                 "codex",
                 "--suffix",
                 "-child",
-                "--marker",
-                "# generated launcher",
                 "--add-dir",
                 str(local_directory),
+                "--sandbox-mode",
+                "danger-full-access",
             ]
         )
         == 0
@@ -193,6 +199,10 @@ def test_stack_derives_strict_sibling_targets_from_committed_source_head(
     metadata = read_launcher(launcher_directory / "codex-source-child")
     assert metadata.session is None
     assert metadata.local_writable_dirs == (local_directory.resolve(),)
+    assert metadata.extensions == {
+        "codex": {"sandbox": "danger-full-access"},
+        "core": {"git_metadata_access": "worktree"},
+    }
 
 
 def test_new_rejects_collisions_without_creating_resources(
@@ -221,8 +231,6 @@ def test_new_rejects_collisions_without_creating_resources(
                 "codex",
                 "--worktree-dir",
                 str(occupied_target),
-                "--marker",
-                "# generated launcher",
             ]
         )
         == 2
@@ -245,8 +253,6 @@ def test_new_rejects_collisions_without_creating_resources(
                 str(branch_target),
                 "--branch",
                 "feature/occupied-branch",
-                "--marker",
-                "# generated launcher",
             ]
         )
         == 2
@@ -268,8 +274,6 @@ def test_new_rejects_collisions_without_creating_resources(
                 "codex",
                 "--worktree-dir",
                 str(launcher_target),
-                "--marker",
-                "# generated launcher",
             ]
         )
         == 2
@@ -291,8 +295,6 @@ def test_new_rejects_collisions_without_creating_resources(
                 "codex",
                 "--worktree-dir",
                 str(symlink_target),
-                "--marker",
-                "# generated launcher",
             ]
         )
         == 2
@@ -323,8 +325,6 @@ def test_stack_rejects_unsafe_suffix_and_detached_source(
                 "codex",
                 "--suffix",
                 "/unsafe",
-                "--marker",
-                "# generated launcher",
             ]
         )
         == 2
@@ -343,8 +343,6 @@ def test_stack_rejects_unsafe_suffix_and_detached_source(
                 "codex",
                 "--suffix",
                 "-detached",
-                "--marker",
-                "# generated launcher",
             ]
         )
         == 2
@@ -376,14 +374,47 @@ def test_new_rejects_invalid_start_ref_before_creating_targets(
                 "feature/missing-ref",
                 "--from",
                 "not-a-ref",
-                "--marker",
-                "# generated launcher",
             ]
         )
         == 2
     )
     assert not target.exists()
     assert _git(primary_worktree, "branch", "--list", "feature/missing-ref") == ""
+
+
+def test_new_rejects_invalid_source_worktree_before_creating_targets(
+    primary_worktree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = tmp_path / "config.toml"
+    _config(config, tmp_path / "launchers")
+    target = tmp_path / "missing-source"
+    monkeypatch.chdir(primary_worktree)
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config),
+                "worktree",
+                "new",
+                "--agent",
+                "codex",
+                "--worktree-dir",
+                str(target),
+                "--source-worktree-dir",
+                str(tmp_path / "missing-source-worktree"),
+                "--branch",
+                "feature/missing-source",
+            ]
+        )
+        == 2
+    )
+    assert "worktree is not a directory" in capsys.readouterr().err
+    assert not target.exists()
+    assert _git(primary_worktree, "branch", "--list", "feature/missing-source") == ""
 
 
 def test_new_rolls_back_owned_resources_and_preserves_external_launcher(
@@ -410,8 +441,6 @@ def test_new_rolls_back_owned_resources_and_preserves_external_launcher(
                 str(failed_target),
                 "--branch",
                 "feature/failed-prepare",
-                "--marker",
-                "# generated launcher",
                 "--prepare",
                 str(failing_preparation),
             ]
@@ -443,8 +472,6 @@ def test_new_rolls_back_owned_resources_and_preserves_external_launcher(
                 str(render_target),
                 "--branch",
                 "feature/failed-render",
-                "--marker",
-                "# generated launcher",
                 "--prepare",
                 str(creating_preparation),
             ]
@@ -487,8 +514,6 @@ def test_new_rolls_back_owned_resources_after_unexpected_launcher_failure(
                 str(target),
                 "--branch",
                 "feature/unexpected-failure",
-                "--marker",
-                "# generated launcher",
             ]
         )
 
@@ -527,8 +552,6 @@ def test_new_rolls_back_owned_resources_after_interruption(
                 str(target),
                 "--branch",
                 "feature/interrupted",
-                "--marker",
-                "# generated launcher",
             ]
         )
 

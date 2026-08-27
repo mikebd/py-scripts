@@ -109,7 +109,7 @@ def test_launcher_lifecycle_delegates_generic_metadata_to_runtime_adapter(tmp_pa
     identifier = adapter.identifier
     lifecycle, settings = _lifecycle(adapter)
 
-    lifecycle.create(identifier, launcher, worktree, "# generated launcher", None, ())
+    lifecycle.create(identifier, launcher, worktree, None, ())
     lifecycle.pin(launcher, "opaque-session", identifier, replace=False)
 
     assert lifecycle.run(launcher, ("continue", "--quiet")) == 17
@@ -120,6 +120,73 @@ def test_launcher_lifecycle_delegates_generic_metadata_to_runtime_adapter(tmp_pa
     assert received_settings == settings
     assert session == SessionReference(identifier, "opaque-session")
     assert passthrough_args == ("continue", "--quiet")
+
+
+def test_launcher_lifecycle_rejects_persisted_modes_without_sandbox_capability(
+    tmp_path: Path,
+) -> None:
+    worktree = _git_worktree(tmp_path)
+    launcher = tmp_path / "launcher"
+    adapter = FakeRuntimeAdapter()
+    lifecycle, _ = _lifecycle(adapter)
+    with pytest.raises(LauncherError, match="does not support persisted launcher sandbox settings"):
+        lifecycle.create(
+            adapter.identifier,
+            launcher,
+            worktree,
+            None,
+            (),
+            sandbox_mode="read-only",
+        )
+    assert not launcher.exists()
+
+    lifecycle.create(adapter.identifier, launcher, worktree, None, ())
+    original = launcher.read_bytes()
+
+    with pytest.raises(LauncherError, match="does not support persisted launcher sandbox settings"):
+        lifecycle.sandbox(launcher, "read-only", (), ())
+
+    assert launcher.read_bytes() == original
+
+    lifecycle.pin(launcher, "parent-session", adapter.identifier, replace=False)
+    target = tmp_path / "target-launcher"
+    with pytest.raises(LauncherError, match="does not support persisted launcher sandbox settings"):
+        lifecycle.fork(
+            launcher,
+            target,
+            adapter.identifier,
+            (),
+            (),
+            sandbox_mode="read-only",
+        )
+    assert not target.exists()
+
+
+def test_launcher_lifecycle_rejects_fork_directory_changes_before_fork(tmp_path: Path) -> None:
+    worktree = _git_worktree(tmp_path)
+    source = tmp_path / "source-launcher"
+    target = tmp_path / "target-launcher"
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    adapter = FakeSessionLifecycleAdapter(
+        forked_session=SessionReference(AgentId("fake"), "child-session")
+    )
+    lifecycle, _ = _lifecycle(adapter)
+    lifecycle.create(adapter.identifier, source, worktree, None, ())
+    lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
+
+    with pytest.raises(LauncherError, match="both added and removed"):
+        lifecycle.fork(
+            source,
+            target,
+            adapter.identifier,
+            (str(directory),),
+            (),
+            removed_dirs=(str(directory),),
+        )
+
+    assert adapter.observed_fork is None
+    assert not target.exists()
 
 
 def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) -> None:
@@ -139,7 +206,6 @@ def test_launcher_lifecycle_delegates_fork_to_session_adapter(tmp_path: Path) ->
         adapter.identifier,
         source,
         worktree,
-        "# generated launcher",
         None,
         (str(inherited),),
         GitMetadataAccess.SHARED,
@@ -197,7 +263,6 @@ def test_launcher_lifecycle_rejects_existing_fork_target_before_preparation_or_f
         adapter.identifier,
         source,
         worktree,
-        "# generated launcher",
         preparation,
         (),
     )
@@ -220,7 +285,7 @@ def test_launcher_lifecycle_rejects_dangling_symlink_fork_target_before_fork(
         forked_session=SessionReference(AgentId("fake"), "child-session")
     )
     lifecycle, _ = _lifecycle(adapter)
-    lifecycle.create(adapter.identifier, source, worktree, "# generated launcher", None, ())
+    lifecycle.create(adapter.identifier, source, worktree, None, ())
     lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
 
     with pytest.raises(LauncherError, match="launcher path already exists"):
@@ -239,7 +304,7 @@ def test_launcher_lifecycle_rejects_unusable_fork_target_before_fork(tmp_path: P
         forked_session=SessionReference(AgentId("fake"), "child-session")
     )
     lifecycle, _ = _lifecycle(adapter)
-    lifecycle.create(adapter.identifier, source, worktree, "# generated launcher", None, ())
+    lifecycle.create(adapter.identifier, source, worktree, None, ())
     lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
 
     with pytest.raises(LauncherError, match="unable to create launcher directory"):
@@ -261,7 +326,7 @@ def test_launcher_lifecycle_delegates_adopt_and_rejects_other_worktrees(tmp_path
         )
     )
     lifecycle, settings = _lifecycle(adapter)
-    lifecycle.create(adapter.identifier, source, worktree, "# generated launcher", None, ())
+    lifecycle.create(adapter.identifier, source, worktree, None, ())
     lifecycle.pin(source, "parent-session", adapter.identifier, replace=False)
 
     lifecycle.adopt(source, target, "existing-session", adapter.identifier, ())

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shlex
 import stat
 import tempfile
 from contextlib import suppress
@@ -32,7 +33,6 @@ class LauncherMetadata:
 
     agent_id: AgentId
     worktree_dir: Path
-    marker: str
     preparation_path: Path | None
     local_writable_dirs: tuple[Path, ...]
     session: SessionReference | None
@@ -46,7 +46,6 @@ class LauncherArtifactMetadata:
     format_version: int
     agent_id: AgentId
     worktree_dir: Path
-    marker: str
     preparation_path: Path | None
     local_writable_dirs: tuple[Path, ...]
     session: SessionReference | None
@@ -56,14 +55,12 @@ class LauncherArtifactMetadata:
 def build_metadata(
     agent_id: AgentId,
     worktree_argument: str | Path,
-    marker: str,
     preparation_argument: str | Path | None,
     local_writable_dirs: tuple[str, ...],
     session_id: str | None = None,
     extensions: MetadataExtensions | None = None,
 ) -> LauncherMetadata:
     """Validate creation inputs and return canonical launcher metadata."""
-    _validate_marker(marker)
     worktree_dir = resolve_worktree(str(worktree_argument))
     preparation_path = _preparation_path(preparation_argument)
     directories = _canonical_directories(local_writable_dirs)
@@ -71,7 +68,6 @@ def build_metadata(
     return LauncherMetadata(
         agent_id=agent_id,
         worktree_dir=worktree_dir,
-        marker=marker,
         preparation_path=preparation_path,
         local_writable_dirs=directories,
         session=session,
@@ -80,12 +76,10 @@ def build_metadata(
 
 
 def validate_launcher_creation_inputs(
-    marker: str,
     preparation_argument: str | Path | None,
     local_writable_dirs: tuple[str, ...],
 ) -> Path | None:
     """Validate launcher inputs that do not depend on an existing worktree."""
-    _validate_marker(marker)
     preparation_path = _preparation_path(preparation_argument)
     _canonical_directories(local_writable_dirs)
     return preparation_path
@@ -99,7 +93,6 @@ def read_launcher(path_argument: str | Path) -> LauncherMetadata:
         return build_metadata(
             artifact.agent_id,
             artifact.worktree_dir,
-            artifact.marker,
             artifact.preparation_path,
             tuple(str(directory) for directory in artifact.local_writable_dirs),
             artifact.session.value if artifact.session is not None else None,
@@ -153,7 +146,6 @@ def describe_launcher(
         f"agent: {metadata.agent_id}",
         f"worktree: {metadata.worktree_dir}",
         f"session: {session}",
-        f"marker: {metadata.marker}",
         f"preparation: {preparation}",
         _git_metadata_access_description(metadata),
     ]
@@ -187,10 +179,17 @@ def write_launcher(
         (
             "#!/bin/sh",
             "set -eu",
-            metadata.marker,
             _INSPECTION_HINT,
             f"{_METADATA_PREFIX}{encoded}",
-            'exec ai-agent-launcher launcher run --launcher "$0" -- "$@"',
+            'case "$0" in',
+            '  /*) launcher_path="$0" ;;',
+            (
+                "  *) launcher_path=\"$(CDPATH='' cd -P \"$(dirname \"$0\")\" && "
+                "pwd)/$(basename \"$0\")\" ;;"
+            ),
+            "esac",
+            f"cd {shlex.quote(str(metadata.worktree_dir))}",
+            'exec ai-agent-launcher launcher run --launcher "$launcher_path" -- "$@"',
             "",
         )
     )
@@ -223,14 +222,52 @@ def with_local_directories(
     return replace(metadata, local_writable_dirs=_canonical_directories(merged))
 
 
+def update_local_directories(
+    artifact: LauncherArtifactMetadata | LauncherMetadata,
+    additional_dirs: tuple[str, ...],
+    removed_dirs: tuple[str, ...],
+) -> tuple[LauncherMetadata, tuple[Path, ...], bool]:
+    """Update persisted local directories and report requested entries not stored."""
+    additions = _canonical_directories(additional_dirs)
+    removals = _canonical_removal_directories(removed_dirs)
+    overlap = set(additions).intersection(removals)
+    if overlap:
+        paths = ", ".join(str(path) for path in sorted(overlap))
+        raise LauncherError(f"launcher local directory cannot be both added and removed: {paths}")
+
+    stored = tuple(path.resolve(strict=False) for path in artifact.local_writable_dirs)
+    stored_set = set(stored)
+    unmatched = tuple(path for path in removals if path not in stored_set)
+    retained = tuple(path for path in stored if path not in removals)
+    merged = tuple(str(path) for path in retained + additions)
+    metadata = build_metadata(
+        artifact.agent_id,
+        artifact.worktree_dir,
+        artifact.preparation_path,
+        merged,
+        artifact.session.value if artifact.session is not None else None,
+        artifact.extensions,
+    )
+    return metadata, unmatched, bool(stored_set.intersection(removals))
+
+
 def with_git_metadata_access(
     metadata: LauncherMetadata, access: GitMetadataAccess
 ) -> LauncherMetadata:
     """Persist one explicit Git metadata access policy on a generated launcher."""
+    return with_metadata_extension(metadata, "core", "git_metadata_access", access.value)
+
+
+def with_metadata_extension(
+    metadata: LauncherMetadata,
+    namespace: str,
+    name: str,
+    value: MetadataExtensionValue,
+) -> LauncherMetadata:
+    """Return launcher metadata with one validated optional setting updated."""
     extensions = _copy_extensions(metadata.extensions) or {}
-    core = extensions.setdefault("core", {})
-    core["git_metadata_access"] = access.value
-    return replace(metadata, extensions=extensions)
+    extensions.setdefault(namespace, {})[name] = value
+    return replace(metadata, extensions=_validated_extensions(extensions))
 
 
 def launcher_git_metadata_access(
@@ -270,7 +307,6 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
         "agent_id",
         "format_version",
         "local_writable_dirs",
-        "marker",
         "preparation_path",
         "session_id",
         "worktree_dir",
@@ -278,7 +314,7 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
     format_version = payload.get("format_version")
     if (
         not expected_keys.issubset(payload)
-        or set(payload).difference(expected_keys | {"extensions"})
+        or set(payload).difference(expected_keys | {"extensions", "marker"})
         or not isinstance(format_version, int)
         or isinstance(format_version, bool)
         or format_version != _METADATA_FORMAT_VERSION
@@ -286,15 +322,10 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
         raise LauncherError(f"unsupported launcher metadata version: {path}")
     agent_value = payload.get("agent_id")
     worktree_value = payload.get("worktree_dir")
-    marker = payload.get("marker")
     preparation = payload.get("preparation_path")
     session_id = payload.get("session_id")
     directories = payload.get("local_writable_dirs")
-    if (
-        not isinstance(agent_value, str)
-        or not isinstance(worktree_value, str)
-        or not isinstance(marker, str)
-    ):
+    if not isinstance(agent_value, str) or not isinstance(worktree_value, str):
         raise LauncherError(f"launcher metadata is invalid: {path}")
     if preparation is not None and not isinstance(preparation, str):
         raise LauncherError(f"launcher metadata is invalid: {path}")
@@ -308,7 +339,6 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
             raise LauncherError(f"launcher metadata is invalid: {path}")
         directory_values.append(directory)
     try:
-        _validate_marker(marker)
         agent_id = AgentId(agent_value)
         session = SessionReference(agent_id, session_id) if session_id is not None else None
         extensions = (
@@ -318,7 +348,6 @@ def _artifact_from_payload(payload: dict[str, object], path: Path) -> LauncherAr
             format_version=format_version,
             agent_id=agent_id,
             worktree_dir=_artifact_path(worktree_value),
-            marker=marker,
             preparation_path=_artifact_path(preparation) if preparation is not None else None,
             local_writable_dirs=tuple(_artifact_path(directory) for directory in directory_values),
             session=session,
@@ -333,7 +362,6 @@ def _encode_metadata(metadata: LauncherMetadata) -> str:
         "agent_id": str(metadata.agent_id),
         "format_version": _METADATA_FORMAT_VERSION,
         "local_writable_dirs": [str(path) for path in metadata.local_writable_dirs],
-        "marker": metadata.marker,
         "preparation_path": str(metadata.preparation_path)
         if metadata.preparation_path is not None
         else None,
@@ -349,11 +377,6 @@ def _encode_metadata(metadata: LauncherMetadata) -> str:
         .decode("ascii")
         .rstrip("=")
     )
-
-
-def _validate_marker(marker: str) -> None:
-    if not marker.startswith("#") or "\n" in marker or "\r" in marker:
-        raise LauncherError("launcher marker must be one shell comment line")
 
 
 def _preparation_path(value: str | Path | None) -> Path | None:
@@ -387,6 +410,27 @@ def _canonical_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
     return tuple(directories)
 
 
+def _canonical_removal_directories(values: tuple[str, ...]) -> tuple[Path, ...]:
+    """Return unique absolute removal paths without requiring their existence."""
+    directories: list[Path] = []
+    for value in values:
+        raw_path = Path(value)
+        try:
+            path = raw_path.expanduser()
+        except RuntimeError as error:
+            raise LauncherError(
+                f"launcher local directory removal is not an absolute path: {raw_path}"
+            ) from error
+        if not path.is_absolute():
+            raise LauncherError(
+                f"launcher local directory removal is not an absolute path: {path}"
+            )
+        resolved = path.resolve(strict=False)
+        if resolved not in directories:
+            directories.append(resolved)
+    return tuple(directories)
+
+
 def _git_metadata_access_description(
     metadata: LauncherMetadata | LauncherArtifactMetadata,
 ) -> str:
@@ -394,7 +438,7 @@ def _git_metadata_access_description(
     explicit = metadata.extensions is not None and "git_metadata_access" in metadata.extensions.get(
         "core", {}
     )
-    suffix = "" if explicit else " (implicit default)"
+    suffix = "" if explicit else " (default)"
     return f"git metadata access: {access.value}{suffix}"
 
 

@@ -21,7 +21,7 @@ help:
 	@echo "  make format        - Format code with ruff"
 	@echo "  make fmt           - Fix, format, and run all checks"
 	@echo "  make build         - Build source and wheel distributions"
-	@echo "  make release-check - Validate a clean Git-tagged tool installation"
+	@echo "  make release-check - Validate release notes and a clean Git-tagged distribution installation"
 	@echo "  make all           - Run all non-mutating checks"
 
 # Default: non-mutating checks (CI-safe)
