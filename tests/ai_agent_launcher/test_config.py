@@ -58,19 +58,19 @@ def test_configuration_parses_multiple_agent_tables(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[agents.codex]
-model = "codex-model"
-
 [agents.claude]
 model = "claude-model"
+
+[agents.codex]
+model = "codex-model"
 """.strip(),
         encoding="utf-8",
     )
 
-    config = load_config(config_path, (AgentId("codex"), AgentId("claude")))
+    config = load_config(config_path, (AgentId("claude"), AgentId("codex")))
 
-    assert config.agent_settings[AgentId("codex")] == {"model": "codex-model"}
     assert config.agent_settings[AgentId("claude")] == {"model": "claude-model"}
+    assert config.agent_settings[AgentId("codex")] == {"model": "codex-model"}
 
 
 @pytest.mark.parametrize("configured_home", ("relative-config", "~unknown-user/config"))

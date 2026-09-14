@@ -7,4 +7,4 @@ from ai_agent_launcher._registry import AgentRegistry
 
 def default_registry() -> AgentRegistry:
     """Return the immutable registry supported by this release."""
-    return AgentRegistry((CodexAdapter(), ClaudeAdapter()))
+    return AgentRegistry((ClaudeAdapter(), CodexAdapter()))

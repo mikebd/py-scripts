@@ -80,7 +80,7 @@ def build_parser(
     _add_run_parser(commands, registry, run_agent)
     _add_launcher_parser(commands, registry)
     _add_worktree_parser(commands, registry)
-    _add_completion_parser(commands)
+    _add_completion_parser(commands, registry)
     return parser
 
 
@@ -117,14 +117,19 @@ def _dispatch(
     if namespace.command == "worktree":
         return _worktree(namespace, registry)
     if namespace.command == "completion":
-        return _completion(namespace, parser)
+        return _completion(namespace, parser, registry)
     parser.print_help()
     return 0
 
 
-def _completion(namespace: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def _completion(
+    namespace: argparse.Namespace, parser: argparse.ArgumentParser, registry: AgentRegistry
+) -> int:
     shell = namespace.shell or _detect_completion_shell(parser)
-    sys.stdout.write(shtab.complete(parser, shell=shell))
+    completion_parser = (
+        build_parser(registry, AgentId(namespace.agent)) if namespace.agent is not None else parser
+    )
+    sys.stdout.write(shtab.complete(completion_parser, shell=shell))
     return 0
 
 
@@ -460,9 +465,17 @@ def _add_worktree_parser(commands: _SubparserCommands, registry: AgentRegistry) 
     _add_worktree_launcher_options(stack, registry)
 
 
-def _add_completion_parser(commands: _SubparserCommands) -> None:
+def _add_completion_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
     completion = commands.add_parser("completion", help="print shell completion code")
     completion.add_argument("--shell", choices=_COMPLETION_SHELLS)
+    completion.add_argument(
+        "--agent",
+        choices=[str(value) for value in registry.identifiers],
+        help=(
+            "generate the run subcommand's completions for this agent instead of "
+            "the default (the first registered agent)"
+        ),
+    )
 
 
 def _add_directories_argument(parser: argparse.ArgumentParser) -> None:

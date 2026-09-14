@@ -264,7 +264,7 @@ class CodexAdapter:
             fork_session_id=parent.value,
             model=None,
             reasoning_effort=None,
-            sandbox=None,
+            sandbox=self._launcher_sandbox_mode(context),
         )
         fork_context = RunContext(
             worktree_dir=context.worktree_dir,

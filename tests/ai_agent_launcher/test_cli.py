@@ -41,6 +41,20 @@ def test_completion_generates_script_for_supported_shell(
     assert captured.err == ""
 
 
+def test_completion_agent_option_selects_that_agents_run_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["completion", "--shell", "bash", "--agent", "codex"]) == 0
+    codex_completion = capsys.readouterr().out
+    assert "--reasoning-effort" in codex_completion
+    assert "--permission-mode" not in codex_completion
+
+    assert main(["completion", "--shell", "bash", "--agent", "claude"]) == 0
+    claude_completion = capsys.readouterr().out
+    assert "--permission-mode" in claude_completion
+    assert "--reasoning-effort" not in claude_completion
+
+
 def test_completion_help_lists_supported_shells(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["completion", "--help"])

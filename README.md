@@ -43,7 +43,7 @@ alias bu='uv --project $HOME/src/mikebd/py/scripts run brew-update'
 ### AI Agent Launcher (`ai-agent-launcher`)
 
 Creates and runs local AI coding-agent workspaces through an agent-neutral
-core. The current supported adapter is `codex`. See the
+core. The currently supported adapters are `claude` and `codex`. See the
 [AI agent launcher guide](docs/ai-agent-launcher/README.md) for tagged installation,
 configuration, and release guidance. For AI-agent discovery, source selection,
 and runtime-help usage, see the

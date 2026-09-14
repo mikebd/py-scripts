@@ -103,6 +103,58 @@ def _config(path: Path, executable: Path, home: Path, sandbox: str = "workspace-
     )
 
 
+def _fake_claude(tmp_path: Path) -> Path:
+    executable = tmp_path / "fake-claude"
+    executable.write_text(
+        "\n".join(
+            (
+                f"#!{sys.executable}",
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "import sys",
+                "arguments = sys.argv[1:]",
+                "if '--resume' in arguments and '--fork-session' in arguments:",
+                "    project = Path(os.environ['CLAUDE_CONFIG_DIR']) / 'projects' / 'fake'",
+                "    project.mkdir(parents=True, exist_ok=True)",
+                "    (project / 'child.jsonl').write_text(",
+                "        json.dumps({'sessionId': 'child-session', 'cwd': os.getcwd()}) + '\\n'",
+                "        + json.dumps({",
+                "            'type': 'continued-in',",
+                "            'sessionId': 'parent-session',",
+                "            'continuedInSessionId': 'child-session',",
+                "        }) + '\\n',",
+                "        encoding='utf-8',",
+                "    )",
+                "output = Path(os.environ['FAKE_CLAUDE_OUTPUT'])",
+                "output.write_text(json.dumps(arguments), encoding='utf-8')",
+            )
+        ),
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    return executable
+
+
+def _claude_config(
+    path: Path, executable: Path, home: Path, permission_mode: str = "auto"
+) -> None:
+    path.write_text(
+        "\n".join(
+            (
+                "[core]",
+                "writable_dirs = []",
+                "",
+                "[agents.claude]",
+                f'executable = "{executable}"',
+                f'home = "{home}"',
+                f'permission_mode = "{permission_mode}"',
+            )
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_atomic_text_write_removes_temporary_file_after_replace_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1682,7 +1734,13 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
     )
 
     assert prepared.read_text(encoding="utf-8") == str(git_worktree)
-    assert json.loads(output.read_text(encoding="utf-8"))[0] == "fork"
+    fork_argv = json.loads(output.read_text(encoding="utf-8"))
+    assert fork_argv[0] == "fork"
+    assert "--sandbox" in fork_argv
+    assert fork_argv[fork_argv.index("--sandbox") + 1] == "danger-full-access"
+    assert str(inherited.resolve()) in fork_argv
+    assert str(added.resolve()) in fork_argv
+    assert str(removed.resolve()) not in fork_argv
     target_metadata = read_launcher(target)
     assert target_metadata.session is not None
     assert target_metadata.session.value == "child-session"
@@ -1699,6 +1757,79 @@ def test_fork_prepares_worktree_and_creates_child_launcher(
     assert capsys.readouterr().err == (
         f"warning: launcher-local writable directory is not stored: {unstored.resolve()}\n"
     )
+
+
+def test_fork_applies_persisted_permission_mode_for_claude(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable = _fake_claude(tmp_path)
+    config_path = tmp_path / "config.toml"
+    home = tmp_path / "claude-home"
+    _claude_config(config_path, executable, home)
+    source = tmp_path / "source-launcher"
+    target = tmp_path / "target-launcher"
+    output = tmp_path / "fake-claude.json"
+    monkeypatch.setenv("FAKE_CLAUDE_OUTPUT", str(output))
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "create",
+                "--agent",
+                "claude",
+                "--launcher",
+                str(source),
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "pin",
+                "--launcher",
+                str(source),
+                "--session-id",
+                "parent-session",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "launcher",
+                "fork",
+                "--launcher",
+                str(source),
+                "--target-launcher",
+                str(target),
+                "--sandbox-mode",
+                "bypassPermissions",
+                "--",
+                "continue",
+            ]
+        )
+        == 0
+    )
+
+    fork_argv = json.loads(output.read_text(encoding="utf-8"))
+    assert "--permission-mode" in fork_argv
+    assert fork_argv[fork_argv.index("--permission-mode") + 1] == "bypassPermissions"
+    target_metadata = read_launcher(target)
+    assert target_metadata.session is not None
+    assert target_metadata.session.value == "child-session"
+    assert target_metadata.extensions["claude"] == {"sandbox": "bypassPermissions"}
 
 
 def test_launcher_run_and_fork_continue_after_preparation_failure(

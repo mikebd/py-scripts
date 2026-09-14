@@ -255,7 +255,7 @@ class ClaudeAdapter:
             session_id=None,
             fork_session_id=parent.value,
             model=None,
-            permission_mode=None,
+            permission_mode=self._launcher_sandbox_mode(context),
             effort=None,
         )
         fork_context = RunContext(
