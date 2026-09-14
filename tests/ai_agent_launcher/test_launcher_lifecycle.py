@@ -1829,6 +1829,7 @@ def test_fork_applies_persisted_permission_mode_for_claude(
     target_metadata = read_launcher(target)
     assert target_metadata.session is not None
     assert target_metadata.session.value == "child-session"
+    assert target_metadata.extensions is not None
     assert target_metadata.extensions["claude"] == {"sandbox": "bypassPermissions"}
 
 
