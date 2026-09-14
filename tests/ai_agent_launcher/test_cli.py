@@ -41,6 +41,20 @@ def test_completion_generates_script_for_supported_shell(
     assert captured.err == ""
 
 
+def test_completion_agent_option_selects_that_agents_run_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["completion", "--shell", "bash", "--agent", "codex"]) == 0
+    codex_completion = capsys.readouterr().out
+    assert "--reasoning-effort" in codex_completion
+    assert "--permission-mode" not in codex_completion
+
+    assert main(["completion", "--shell", "bash", "--agent", "claude"]) == 0
+    claude_completion = capsys.readouterr().out
+    assert "--permission-mode" in claude_completion
+    assert "--reasoning-effort" not in claude_completion
+
+
 def test_completion_help_lists_supported_shells(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["completion", "--help"])
@@ -92,8 +106,28 @@ def test_run_help_lists_runtime_options(capsys: pytest.CaptureFixture[str]) -> N
 
     help_text = capsys.readouterr().out
     assert "--agent" in help_text
-    assert "--reasoning-effort" in help_text
     assert "--fork-session-id" in help_text
+
+
+def test_run_help_lists_the_selected_agents_own_options(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["run", "--agent", "codex", "--help"])
+
+    assert "--reasoning-effort" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit, match="0"):
+        main(["run", "--agent", "claude", "--help"])
+
+    assert "--permission-mode" in capsys.readouterr().out
+
+
+def test_run_help_uses_the_last_repeated_agent_value(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["run", "--agent", "claude", "--agent", "codex", "--help"])
+
+    help_text = capsys.readouterr().out
+    assert "--reasoning-effort" in help_text
+    assert "--permission-mode" not in help_text
 
 
 def test_worktree_help_lists_new_and_stack(capsys: pytest.CaptureFixture[str]) -> None:
@@ -222,7 +256,10 @@ def test_launcher_sandbox_help_lists_persistent_update_options(
     assert "--add-dir" in help_text
     assert "--remove-dir" in help_text
     assert "--sandbox-mode" not in help_text.split()
-    assert "{danger-full-access,read-only,workspace-write}" in help_text
+    assert (
+        "{acceptEdits,auto,bypassPermissions,danger-full-access,dontAsk,manual,plan,"
+        "read-only,workspace-write}" in help_text
+    )
 
 
 @pytest.mark.parametrize(

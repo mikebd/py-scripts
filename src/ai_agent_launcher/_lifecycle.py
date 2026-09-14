@@ -179,7 +179,7 @@ class LauncherLifecycle:
         adapter = self._lifecycle_adapter(metadata.agent_id)
         self._run_preparation(metadata)
         session = adapter.fork_session(
-            self._context(metadata, passthrough_args),
+            self._context(target, passthrough_args),
             self._settings(metadata.agent_id),
             metadata.session,
             passthrough_args,

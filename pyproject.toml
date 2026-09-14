@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mikebd-py-scripts"
-version = "0.1.3"
+version = "0.1.4"
 description = "A collection of Python scripts"
 authors = [
     { name = "Michael Ben-David" },
@@ -23,9 +23,8 @@ classifiers = [
 
 [project.scripts]
 ai-agent-launcher = "ai_agent_launcher.cli:main"
-brew_diff = "brew.diff:diff"
-bu = "brew.update:update"
-codex_fix = "jetbrains.codex_fix:main"
+brew-diff = "brew.diff:diff"
+brew-update = "brew.update:update"
 
 [dependency-groups]
 dev = [

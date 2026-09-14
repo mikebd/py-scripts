@@ -29,13 +29,13 @@ Scripts are run directly from the repository using `uv`, without installing anyt
 From the repo root:
 
 ```bash
-uv run bu
+uv run brew-update
 ```
 
 To make this convenient from anywhere, add an alias to your `.bashrc` or `.zshrc`:
 
 ```bash
-alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
+alias bu='uv --project $HOME/src/mikebd/py/scripts run brew-update'
 ```
 
 ## Available Scripts
@@ -43,17 +43,17 @@ alias bu='uv --project $HOME/src/mikebd/py/scripts run bu'
 ### AI Agent Launcher (`ai-agent-launcher`)
 
 Creates and runs local AI coding-agent workspaces through an agent-neutral
-core. The current supported adapter is `codex`. See the
+core. The currently supported adapters are `claude` and `codex`. See the
 [AI agent launcher guide](docs/ai-agent-launcher/README.md) for tagged installation,
 configuration, and release guidance. For AI-agent discovery, source selection,
 and runtime-help usage, see the
 [AI agent runtime activation guide](https://github.com/mikebd/ai-agent-skills/blob/main/shared/references/agent-runtime/AI_AGENT_LAUNCHER.md).
 
-### Brew Diff (`brew_diff <remote_host>`)
+### Brew Diff (`brew-diff <remote_host>`)
 
 Campares manually installed Homebrew formulas betweel the local and remote hosts.
 
-### Brew Info New Formula (`bu`)
+### Brew Info New Formula (`brew-update`)
 
 One way I keep track of the evolving developer ecosystem is by paying close
 attention to new packages as they become available. This script simplifies that process by
@@ -61,7 +61,11 @@ automating the display of `brew info` output for newly added formulas.
 
 Recommended environment variable to prevent implicit updates: `HOMEBREW_NO_AUTO_UPDATE=1`
 
-#### bu Examples
+Use `brew-update --dry-run` to sanity-check the command without mutating
+Homebrew state or requiring `brew` to be installed; `--help` also exits
+cleanly without running anything.
+
+#### brew-update Examples
 
 Already up to date:
 
@@ -71,7 +75,7 @@ New formula + outdated packages:
 
 ![bu - one new formula](docs/images/bu-one-new-formula.png)
 
-#### bu Inspiration
+#### brew-update Inspiration
 
 ```bash
 #!/bin/bash
@@ -98,7 +102,9 @@ echo "$newly_added_casks" | xargs brew info --cask
 
 JetBrains IDEs bundle a Codex binary that can fail on Linux because of GLIBC incompatibilities. This script inspects cache folders (default `~/.cache/JetBrains`), extracts the latest `Codex CLI version mismatch` entry from each `idea.log`, downloads the matching musl Codex release from SourceForge, and installs it as `codex-x86_64-unknown-linux-gnu` inside the IDE cache so the IDE uses a compatible executable.
 
-Run it via `uv run codex_fix`. Useful flags:
+It is not installed as a global console script; run it via
+`uv run python -m jetbrains.codex_fix` from a checkout of this repository.
+Useful flags:
 - `--cache-root` to point at a different JetBrains cache directory.
 - `--ide-dir` (repeatable) to target specific IDE caches directly.
 - `--all` to operate on every cache directory that matches any include/exclude filters instead of just one.

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from ai_agent_launcher._claude import ClaudeAdapter
 from ai_agent_launcher._codex import CodexAdapter
 from ai_agent_launcher._defaults import default_registry
 from ai_agent_launcher._models import AgentId
@@ -13,11 +14,12 @@ class ExampleAdapter:
     identifier: AgentId
 
 
-def test_default_registry_contains_only_the_initial_adapter() -> None:
+def test_default_registry_contains_the_supported_adapters() -> None:
     registry = default_registry()
 
-    assert registry.identifiers == (AgentId("codex"),)
+    assert registry.identifiers == (AgentId("claude"), AgentId("codex"))
     assert isinstance(registry.get(AgentId("codex")), CodexAdapter)
+    assert isinstance(registry.get(AgentId("claude")), ClaudeAdapter)
 
 
 def test_registry_uses_stable_identifier_order_and_a_non_codex_adapter() -> None:

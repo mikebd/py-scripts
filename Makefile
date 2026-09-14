@@ -5,7 +5,8 @@ UV := $(or \
 )
 
 ifndef UV
-$(error "uv not found in PATH. Please install uv: https://astral.sh/uv/")
+# Install uv: https://astral.sh/uv/
+$(error "uv not found in PATH. Please install uv.")
 endif
 
 .PHONY: help lint format typecheck fix check all fmt build release-check release-lock

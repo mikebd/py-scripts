@@ -11,6 +11,36 @@ Its human-facing, reverse-chronological structure and change categories are
 informed by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 repository applies its own scoped release-note policy.
 
+## [v0.1.4] - 2026-09-14
+
+### Scope
+
+- `ai-agent-launcher`
+- `codex_fix`
+- `bu`, `brew_diff`
+
+### Added
+
+- `ai-agent-launcher` supports Claude Code as a second agent adapter alongside
+  Codex, configured through `[agents.claude]`. It supports `run`, persisted
+  writable directories, a persisted permission-mode override, and session
+  resume/fork/find using Claude Code's own session transcripts.
+- `brew-update --dry-run` prints what would run without invoking `brew`;
+  `--help` also now exits cleanly without running anything.
+
+### Changed
+
+- `bu` is renamed to `brew-update`; the name was insufficiently distinct for a
+  global executable.
+- `brew_diff` is renamed to `brew-diff` for kebab-case naming consistency with
+  the other global executables.
+
+### Removed
+
+- `codex_fix` is no longer installed as a global console script; it is an
+  infrequently used utility with a name too generic for a global executable.
+  Run it from a checkout with `uv run python -m jetbrains.codex_fix` instead.
+
 ## [v0.1.3] - 2026-08-27
 
 ### Scope
