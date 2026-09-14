@@ -325,15 +325,20 @@ def _print_created_worktree(result: CreatedWorktree) -> None:
 
 
 def _peek_run_agent(arguments: list[str], registry: AgentRegistry) -> AgentId | None:
-    """Best-effort pre-scan for `run --agent VALUE` before the option-bearing parser exists."""
+    """Best-effort pre-scan for `run --agent VALUE` before the option-bearing parser exists.
+
+    Scans every `--agent` occurrence and keeps the last valid one, matching
+    argparse's own last-value-wins behavior for a repeated `store` option.
+    """
     try:
         run_index = arguments.index("run")
     except ValueError:
         return None
+    selected: AgentId | None = None
     for index in range(run_index + 1, len(arguments)):
         token = arguments[index]
         if token == "--":
-            return None
+            break
         if token.startswith("--agent="):
             candidate = token.split("=", 1)[1]
         elif token == "--agent" and index + 1 < len(arguments):
@@ -343,9 +348,10 @@ def _peek_run_agent(arguments: list[str], registry: AgentRegistry) -> AgentId | 
         try:
             identifier = AgentId(candidate)
         except ValueError:
-            return None
-        return identifier if identifier in registry.identifiers else None
-    return None
+            continue
+        if identifier in registry.identifiers:
+            selected = identifier
+    return selected
 
 
 def _add_run_parser(

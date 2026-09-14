@@ -107,6 +107,15 @@ def test_run_help_lists_the_selected_agents_own_options(capsys: pytest.CaptureFi
     assert "--permission-mode" in capsys.readouterr().out
 
 
+def test_run_help_uses_the_last_repeated_agent_value(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["run", "--agent", "claude", "--agent", "codex", "--help"])
+
+    help_text = capsys.readouterr().out
+    assert "--reasoning-effort" in help_text
+    assert "--permission-mode" not in help_text
+
+
 def test_worktree_help_lists_new_and_stack(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit, match="0"):
         main(["worktree", "--help"])
