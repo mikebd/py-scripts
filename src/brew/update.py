@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import subprocess
 import sys
 
@@ -11,6 +12,23 @@ def update():
      - full info for new formulas
      - outdated formulas
     """
+    parser = argparse.ArgumentParser(
+        description="Update Homebrew and report new/outdated formulas."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print what would run without invoking brew",
+    )
+    args = parser.parse_args()
+    if args.dry_run:
+        print("[dry-run] would run: brew update")
+        print("[dry-run] would check for newly added formulas via: brew search --formula /")
+        print(
+            "[dry-run] would check for outdated formulas via: brew upgrade --formula --dry-run"
+        )
+        return
+
     print("Fetching old formulas...")
     old_formulas = brew_search()
 

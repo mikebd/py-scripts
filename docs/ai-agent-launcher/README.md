@@ -1,7 +1,8 @@
 # AI agent launcher
 
 `ai-agent-launcher` creates and runs local AI coding-agent workspaces. The
-current supported adapter is `codex`; its runtime details remain adapter-owned.
+currently supported adapters are `codex` and `claude`; each adapter's runtime
+details remain adapter-owned.
 
 Its component-specific durable choices are recorded in the
 [AI agent launcher decision records](adr/README.md).
@@ -179,11 +180,18 @@ worktree's branch is never used implicitly.
 The default configuration path is
 `$XDG_CONFIG_HOME/ai-agent-launcher/config.toml`, falling back to
 `$HOME/.config/ai-agent-launcher/config.toml`. Generic settings belong in
-`[core]`; Codex settings belong in `[agents.codex]`.
+`[core]`; Codex settings belong in `[agents.codex]`; Claude Code settings
+belong in `[agents.claude]`.
 
 Run `ai-agent-launcher --help` for the current launcher, worktree, and runtime
 commands. Existing legacy Bash launcher artifacts are not imported; create
 new launchers explicitly.
+
+The `run` command wires one adapter's options onto its parser at a time, so
+its own `--help` shows only a representative agent's options unless an
+explicit `--agent NAME` is given first; run `ai-agent-launcher run --agent
+claude --help` or `ai-agent-launcher run --agent codex --help` to see that
+agent's own options.
 
 ### Git metadata access
 
@@ -229,9 +237,13 @@ configuration.
 
 Set an initial persisted sandbox mode while creating a launcher with
 `--sandbox-mode`. `launcher create`, `launcher fork`, `launcher adopt`,
-`worktree new`, and `worktree stack` support this option. It accepts the
-sandbox modes supported by the selected agent adapter; the current Codex
-adapter supports `read-only`, `workspace-write`, and `danger-full-access`.
+`worktree new`, and `worktree stack` support this option. Its choices are the
+union of the sandbox/permission modes supported by every registered agent
+adapter, so an invalid combination for the launcher's actual agent is only
+caught when the adapter validates it. The current Codex adapter supports
+`read-only`, `workspace-write`, and `danger-full-access`; the current Claude
+adapter supports its own native permission modes: `acceptEdits`, `auto`,
+`bypassPermissions`, `manual`, `dontAsk`, and `plan`.
 
 `launcher fork` and `launcher adopt` copy the source launcher's local writable
 directories and persisted sandbox mode unless explicitly overridden. Their
@@ -299,6 +311,31 @@ sources appear as notes beside the stored launcher metadata.
 Only the configured and launcher-local inputs are agent-neutral. The automatic
 additions above are current Codex behavior and are not a contract for future
 agent adapters.
+
+## Claude-specific behavior
+
+The Claude adapter adds writable directories in addition to the generic
+`[core].writable_dirs` and launcher-local `--add-dir` inputs.
+
+| Source | Inclusion condition | Runtime behavior |
+| --- | --- | --- |
+| `[core].writable_dirs` | Each configured path, except one that strictly contains automatic Git metadata for the launched worktree | Must already be an existing directory. |
+| Launcher-local `--add-dir` entries | Each path stored in launcher metadata | Must already be an existing directory. |
+| `<worktree>/.context` | The directory exists | Added when present. |
+| Git directory | The launcher worktree has resolvable Git metadata | Adds the worktree-specific directory from `git rev-parse --git-dir`. |
+| Git common directory | The launcher's persisted Git metadata access is `shared` | Adds the shared directory from `git rev-parse --git-common-dir`. |
+
+Duplicates are removed, using the same overlap and ordering rules described
+above for Codex. The Claude adapter does not add Go or GolangCI-Lint tool
+caches; those are current Codex-specific additions. Only the configured and
+launcher-local inputs are agent-neutral; the automatic additions above are
+current Claude behavior and are not a contract for future agent adapters.
+
+Claude session resume and fork use the installed `claude` CLI's own
+`--resume`/`--fork-session` flags. Session and fork/parent lookups read
+Claude Code's session transcripts directly (`$CLAUDE_CONFIG_DIR/projects/*/*.jsonl`,
+falling back to `~/.claude`), using each transcript's `sessionId`/`cwd` fields
+and its `continued-in` record to identify a forked session's parent.
 
 ## Shell completion
 

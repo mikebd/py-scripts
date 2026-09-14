@@ -82,6 +82,57 @@ def _write_config(
     )
 
 
+def _fake_claude(tmp_path: Path) -> tuple[Path, Path]:
+    output = tmp_path / "fake-claude-output.json"
+    executable = tmp_path / "fake-claude"
+    executable.write_text(
+        "\n".join(
+            [
+                f"#!{sys.executable}",
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "import sys",
+                "Path(os.environ['FAKE_CLAUDE_OUTPUT']).write_text(json.dumps({",
+                "    'argv': sys.argv[1:],",
+                "    'cwd': os.getcwd(),",
+                "    'claude_config_dir': os.environ.get('CLAUDE_CONFIG_DIR'),",
+                "}), encoding='utf-8')",
+                "raise SystemExit(int(os.environ.get('FAKE_CLAUDE_EXIT', '0')))",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    return executable, output
+
+
+def _write_claude_config(
+    path: Path,
+    executable: Path,
+    home: Path,
+    writable_dir: Path,
+    git_metadata_access: str = "worktree",
+) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "[core]",
+                f'writable_dirs = ["{writable_dir}"]',
+                f'default_git_metadata_access = "{git_metadata_access}"',
+                "",
+                "[agents.claude]",
+                f'executable = "{executable}"',
+                f'home = "{home}"',
+                'permission_mode = "manual"',
+                'model = "config-model"',
+                'effort = "low"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def _disable_optional_cache_tools(monkeypatch: pytest.MonkeyPatch) -> None:
     original_which = _codex.shutil.which
 
@@ -220,6 +271,139 @@ def test_run_propagates_child_exit_status(
         == 17
     )
     assert json.loads(output.read_text(encoding="utf-8"))["argv"][0] == "fork"
+
+
+def test_run_renders_claude_command_and_environment(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable, output = _fake_claude(tmp_path)
+    configured_dir = tmp_path / "configured"
+    requested_dir = tmp_path / "requested"
+    configured_dir.mkdir()
+    requested_dir.mkdir()
+    config_path = tmp_path / "config.toml"
+    configured_home = tmp_path / "configured-home"
+    _write_claude_config(config_path, executable, configured_home, configured_dir)
+    monkeypatch.setenv("FAKE_CLAUDE_OUTPUT", str(output))
+
+    result = main(
+        [
+            "--config",
+            str(config_path),
+            "run",
+            "--agent",
+            "claude",
+            "--worktree-dir",
+            str(git_worktree),
+            "--add-dir",
+            str(requested_dir),
+            "--model",
+            "run-model",
+            "--permission-mode",
+            "acceptEdits",
+            "--effort",
+            "high",
+            "--",
+            "implement",
+            "--",
+            "this",
+        ]
+    )
+
+    assert result == 0
+    invocation = json.loads(output.read_text(encoding="utf-8"))
+    assert invocation["cwd"] == str(git_worktree)
+    assert invocation["claude_config_dir"] == str(configured_home)
+    assert invocation["argv"][:8] == [
+        "--permission-mode",
+        "acceptEdits",
+        "--model",
+        "run-model",
+        "--effort",
+        "high",
+        "--add-dir",
+        str(configured_dir),
+    ]
+    assert invocation["argv"][-3:] == ["implement", "--", "this"]
+    assert invocation["argv"].index(str(configured_dir)) < invocation["argv"].index(
+        str(requested_dir)
+    )
+
+
+def test_run_uses_claude_resume_and_fork_flags(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable, output = _fake_claude(tmp_path)
+    writable_dir = tmp_path / "writable"
+    writable_dir.mkdir()
+    config_path = tmp_path / "config.toml"
+    _write_claude_config(config_path, executable, tmp_path / "configured-home", writable_dir)
+    monkeypatch.setenv("FAKE_CLAUDE_OUTPUT", str(output))
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "run",
+                "--agent",
+                "claude",
+                "--worktree-dir",
+                str(git_worktree),
+                "--session-id",
+                "opaque/session",
+            ]
+        )
+        == 0
+    )
+    invocation = json.loads(output.read_text(encoding="utf-8"))
+    assert invocation["argv"][-2:] == ["--resume", "opaque/session"]
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "run",
+                "--agent",
+                "claude",
+                "--worktree-dir",
+                str(git_worktree),
+                "--fork-session-id",
+                "parent",
+            ]
+        )
+        == 0
+    )
+    invocation = json.loads(output.read_text(encoding="utf-8"))
+    assert invocation["argv"][-3:] == ["--resume", "parent", "--fork-session"]
+
+
+def test_run_propagates_claude_child_exit_status(
+    git_worktree: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    executable, output = _fake_claude(tmp_path)
+    writable_dir = tmp_path / "writable"
+    writable_dir.mkdir()
+    config_path = tmp_path / "config.toml"
+    _write_claude_config(config_path, executable, tmp_path / "home", writable_dir)
+    monkeypatch.setenv("FAKE_CLAUDE_OUTPUT", str(output))
+    monkeypatch.setenv("FAKE_CLAUDE_EXIT", "17")
+
+    assert (
+        main(
+            [
+                "--config",
+                str(config_path),
+                "run",
+                "--agent",
+                "claude",
+                "--worktree-dir",
+                str(git_worktree),
+            ]
+        )
+        == 17
+    )
 
 
 def test_run_rejects_missing_explicit_writable_directory(

@@ -92,8 +92,19 @@ def test_run_help_lists_runtime_options(capsys: pytest.CaptureFixture[str]) -> N
 
     help_text = capsys.readouterr().out
     assert "--agent" in help_text
-    assert "--reasoning-effort" in help_text
     assert "--fork-session-id" in help_text
+
+
+def test_run_help_lists_the_selected_agents_own_options(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        main(["run", "--agent", "codex", "--help"])
+
+    assert "--reasoning-effort" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit, match="0"):
+        main(["run", "--agent", "claude", "--help"])
+
+    assert "--permission-mode" in capsys.readouterr().out
 
 
 def test_worktree_help_lists_new_and_stack(capsys: pytest.CaptureFixture[str]) -> None:
@@ -222,7 +233,10 @@ def test_launcher_sandbox_help_lists_persistent_update_options(
     assert "--add-dir" in help_text
     assert "--remove-dir" in help_text
     assert "--sandbox-mode" not in help_text.split()
-    assert "{danger-full-access,read-only,workspace-write}" in help_text
+    assert (
+        "{acceptEdits,auto,bypassPermissions,danger-full-access,dontAsk,manual,plan,"
+        "read-only,workspace-write}" in help_text
+    )
 
 
 @pytest.mark.parametrize(

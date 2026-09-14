@@ -55,8 +55,19 @@ def distribution_version() -> str:
         return "0+unknown"
 
 
-def build_parser(registry: AgentRegistry) -> argparse.ArgumentParser:
-    """Build the root parser and delegate agent-owned options to adapters."""
+def build_parser(
+    registry: AgentRegistry, run_agent: AgentId | None = None
+) -> argparse.ArgumentParser:
+    """Build the root parser and delegate agent-owned options to adapters.
+
+    `run_agent` selects which single registered runtime adapter contributes its
+    options to the shared `run` parser. Adapters are not required to use disjoint
+    option names, so wiring every adapter's options onto one parser at once could
+    raise a conflicting-option-string error once more than one `RuntimeAgentAdapter`
+    is registered. Without a resolvable `run_agent` (for example plain `--help` or
+    shell-completion generation), the first registered identifier is used instead;
+    pass an explicit `--agent NAME` before `--help` to see that agent's own options.
+    """
     parser = argparse.ArgumentParser(
         prog="ai-agent-launcher",
         description="Launch and manage local AI coding-agent workspaces.",
@@ -66,7 +77,7 @@ def build_parser(registry: AgentRegistry) -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, metavar="PATH")
     parser.add_argument("--version", action="version", version=distribution_version())
     commands = parser.add_subparsers(dest="command")
-    _add_run_parser(commands, registry)
+    _add_run_parser(commands, registry, run_agent)
     _add_launcher_parser(commands, registry)
     _add_worktree_parser(commands, registry)
     _add_completion_parser(commands)
@@ -77,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     """Run the root command, showing help when no operation was requested."""
     arguments = sys.argv[1:] if argv is None else argv
     registry = default_registry()
-    parser = build_parser(registry)
+    parser = build_parser(registry, _peek_run_agent(arguments, registry))
     if not arguments:
         parser.print_help()
         return 0
@@ -313,15 +324,42 @@ def _print_created_worktree(result: CreatedWorktree) -> None:
     )
 
 
-def _add_run_parser(commands: _SubparserCommands, registry: AgentRegistry) -> None:
+def _peek_run_agent(arguments: list[str], registry: AgentRegistry) -> AgentId | None:
+    """Best-effort pre-scan for `run --agent VALUE` before the option-bearing parser exists."""
+    try:
+        run_index = arguments.index("run")
+    except ValueError:
+        return None
+    for index in range(run_index + 1, len(arguments)):
+        token = arguments[index]
+        if token == "--":
+            return None
+        if token.startswith("--agent="):
+            candidate = token.split("=", 1)[1]
+        elif token == "--agent" and index + 1 < len(arguments):
+            candidate = arguments[index + 1]
+        else:
+            continue
+        try:
+            identifier = AgentId(candidate)
+        except ValueError:
+            return None
+        return identifier if identifier in registry.identifiers else None
+    return None
+
+
+def _add_run_parser(
+    commands: _SubparserCommands, registry: AgentRegistry, run_agent: AgentId | None
+) -> None:
     run_parser = commands.add_parser("run", help="run an agent in an existing Git worktree")
     run_parser.add_argument(
         "--agent", choices=[str(value) for value in registry.identifiers], required=True
     )
     run_parser.add_argument("--worktree-dir", metavar="PATH")
     _add_directories_argument(run_parser)
-    for identifier in registry.identifiers:
-        adapter = registry.get(identifier)
+    if registry.identifiers:
+        selected = run_agent if run_agent is not None else registry.identifiers[0]
+        adapter = registry.get(selected)
         if isinstance(adapter, RuntimeAgentAdapter):
             adapter.configure_run_parser(run_parser)
     run_parser.add_argument("agent_arguments", nargs=argparse.REMAINDER, metavar="AGENT_ARGUMENT")
