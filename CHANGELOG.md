@@ -7,6 +7,10 @@ it applies repository-wide, to one or more command-line entry points, or both.
 Draft entries are updated as their release scope changes. Published entries
 may be corrected when needed.
 
+Its human-facing, reverse-chronological structure and change categories are
+informed by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
+repository applies its own scoped release-note policy.
+
 ## [v0.1.5] - Draft
 
 ### Scope
@@ -18,10 +22,8 @@ may be corrected when needed.
 - `pull-trunk-branches` discovers local clones and worktrees, safely gates
   updates on a clean selection, chooses a containing remote tip, and pulls
   incoming common trunk branches serially.
-
-Its human-facing, reverse-chronological structure and change categories are
-informed by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
-repository applies its own scoped release-note policy.
+- `pull-trunk-branches --dry-run` previews live remote updates without
+  changing selected repositories.
 
 ## [v0.1.4] - 2026-09-14
 

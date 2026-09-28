@@ -1,5 +1,8 @@
+import signal
 import subprocess
+from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
@@ -9,6 +12,17 @@ from repo import pull_trunk_branches as command
 
 def _git(path: Path, *arguments: str) -> None:
     subprocess.run(["git", *arguments], cwd=path, check=True, capture_output=True)
+
+
+def _git_text(path: Path, *arguments: str) -> str:
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
 
 
 def _commit(path: Path, name: str = "file") -> None:
@@ -23,6 +37,37 @@ def _commit(path: Path, name: str = "file") -> None:
         "commit",
         "-m",
         name,
+    )
+
+
+def _repository_with_incoming_commit(tmp_path: Path) -> tuple[Path, str]:
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "init", "--bare", str(remote))
+    _git(remote, "symbolic-ref", "HEAD", "refs/heads/main")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git(repository, "init", "-b", "main")
+    _commit(repository, "base")
+    _git(repository, "remote", "add", "origin", str(remote))
+    _git(repository, "push", "-u", "origin", "main")
+    updater = tmp_path / "updater"
+    _git(tmp_path, "clone", str(remote), str(updater))
+    _commit(updater, "incoming")
+    tip = _git_text(updater, "rev-parse", "HEAD")
+    _git(updater, "push", "origin", "main")
+    return repository, tip
+
+
+def _git_state(repository: Path) -> tuple[str, str, str, str, bytes | None]:
+    fetch_head = Path(_git_text(repository, "rev-parse", "--git-path", "FETCH_HEAD"))
+    if not fetch_head.is_absolute():
+        fetch_head = repository / fetch_head
+    return (
+        _git_text(repository, "rev-parse", "HEAD"),
+        _git_text(repository, "status", "--porcelain", "--untracked-files=all"),
+        _git_text(repository, "for-each-ref", "--format=%(refname) %(objectname)"),
+        _git_text(repository, "reflog", "show", "--format=%H"),
+        fetch_head.read_bytes() if fetch_head.exists() else None,
     )
 
 
@@ -43,6 +88,45 @@ def test_git_clears_inherited_git_context(
     environment = run.call_args.kwargs["env"]
     assert "UNRELATED_VARIABLE" in environment
     assert all(name not in environment for name in command._GIT_CONTEXT_ENVIRONMENT)
+
+
+def test_dry_run_reports_update_without_changing_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repository, tip = _repository_with_incoming_commit(tmp_path)
+    old_head = _git_text(repository, "rev-parse", "HEAD")
+    before = _git_state(repository)
+    temporary_root = tmp_path / "temporary"
+    temporary_root.mkdir()
+    monkeypatch.setattr(command.tempfile, "tempdir", str(temporary_root))
+
+    assert command.main(["--dry-run", str(repository)]) == 0
+
+    assert capsys.readouterr().out == (
+        f"{repository}: origin/main would update 1 commits\n"
+        f"  {old_head[:7]} -> {tip[:7]}\n"
+        f"  changes: {old_head}..{tip}\n"
+    )
+    assert _git_state(repository) == before
+    assert list(temporary_root.iterdir()) == []
+
+
+def test_dry_run_supports_linked_worktree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repository, tip = _repository_with_incoming_commit(tmp_path)
+    _git(repository, "checkout", "-b", "side")
+    worktree = tmp_path / "linked-worktree"
+    _git(repository, "worktree", "add", str(worktree), "main")
+    old_head = _git_text(worktree, "rev-parse", "HEAD")
+    before = _git_state(worktree)
+
+    assert command.main(["--dry-run", str(worktree)]) == 0
+
+    assert f"  {old_head[:7]} -> {tip[:7]}" in capsys.readouterr().out
+    assert _git_state(worktree) == before
 
 
 def test_discover_repositories_includes_nested_clone_and_worktree(tmp_path: Path) -> None:
@@ -137,6 +221,47 @@ def test_remote_tips_rejects_fetch_failure(mocker: MockerFixture) -> None:
     mocker.patch.object(command, "_git", side_effect=fake_git)
 
     assert command._remote_tips(Path("repo"), "main") == "unable to fetch origin/main"
+
+
+def test_remote_tips_fetches_inspected_sha_into_scratch(mocker: MockerFixture) -> None:
+    repository = Path("repo")
+    scratch = Path("scratch")
+
+    def fake_git(path: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+        if path == repository and arguments == ["remote"]:
+            return subprocess.CompletedProcess([], 0, "origin\n", "")
+        if path == repository and arguments[:2] == ["ls-remote", "--exit-code"]:
+            return subprocess.CompletedProcess([], 0, "inspected refs/heads/main\n", "")
+        if path == repository and arguments == ["remote", "get-url", "origin"]:
+            return subprocess.CompletedProcess([], 0, "remote-url\n", "")
+        if path == scratch and arguments[:3] == ["fetch", "--quiet", "--no-write-fetch-head"]:
+            return subprocess.CompletedProcess([], 0, "", "")
+        if path == scratch and arguments == ["rev-parse", "refs/pull-trunk-branches/0"]:
+            return subprocess.CompletedProcess([], 0, "inspected\n", "")
+        if path == repository and arguments == ["rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess([], 0, "old\n", "")
+        if path == scratch and arguments == ["rev-list", "--count", "old..inspected"]:
+            return subprocess.CompletedProcess([], 0, "1\n", "")
+        raise AssertionError((path, arguments))
+
+    mocker.patch.object(command, "_git", side_effect=fake_git)
+
+    assert command._remote_tips(repository, "main", inspection_repository=scratch) == (
+        command._RemoteTip("origin", "inspected", 1),
+    )
+
+
+def test_preview_reports_scratch_clone_failure(mocker: MockerFixture) -> None:
+    mocker.patch.object(
+        command,
+        "_git",
+        return_value=subprocess.CompletedProcess([], 1, "", "clone failed"),
+    )
+
+    report, problem = command._preview(Path("repo"), "main")
+
+    assert report is None
+    assert problem == "unable to create isolated inspection repository"
 
 
 def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixture) -> None:
@@ -235,6 +360,47 @@ def test_process_reports_count_failure_after_pull(mocker: MockerFixture) -> None
 
     assert report is None
     assert problem == "unable to count incoming commits after pull"
+
+
+def test_graceful_termination_restores_handlers(mocker: MockerFixture) -> None:
+    original_handlers = {
+        signal.SIGTERM: signal.SIG_DFL,
+        signal.SIGHUP: signal.SIG_IGN,
+    }
+    calls: list[tuple[signal.Signals, Any]] = []
+
+    def replace_handler(signum: signal.Signals, handler: Any) -> Any:
+        calls.append((signum, handler))
+        return original_handlers[signum]
+
+    mocker.patch.object(command.signal, "signal", side_effect=replace_handler)
+
+    with command._graceful_termination():
+        installed = dict(calls)
+        for termination_signal in original_handlers:
+            with pytest.raises(SystemExit) as error:
+                installed[termination_signal](termination_signal, None)
+            assert error.value.code == 128 + termination_signal
+
+    assert calls[2:] == list(original_handlers.items())
+
+
+def test_main_dry_run_uses_preview(
+    mocker: MockerFixture, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repository = Path("repository")
+    mocker.patch.object(command, "discover_repositories", return_value=(repository,))
+    mocker.patch.object(command, "_branch", return_value="main")
+    mocker.patch.object(command, "_preflight", return_value=None)
+    preview = mocker.patch.object(command, "_preview", return_value=("would update", None))
+    process = mocker.patch.object(command, "_process")
+    mocker.patch.object(command, "_graceful_termination", return_value=nullcontext())
+
+    assert command.main(["--dry-run", "root"]) == 0
+
+    assert capsys.readouterr().out == "would update\n"
+    preview.assert_called_once_with(repository, "main")
+    process.assert_not_called()
 
 
 def test_main_dirty_repository_gates_all_processing(
