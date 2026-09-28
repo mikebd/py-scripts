@@ -114,6 +114,22 @@ Useful flags:
 
 Backups of existing binaries are created before replacement, and each install is verified by running the installed binary with `--version` so failures are reported per-IDE in the summary.
 
+### Pull Trunk Branches (`pull-trunk-branches [ROOT ...]`)
+
+Recursively finds local Git clones and worktrees beneath the given roots (or
+the current directory when no roots are supplied), then refreshes checked-out
+`dev`, `develop`, `development`, `main`, and `master` branches. Git metadata
+directories and symlinked directories are not traversed, while nested
+repositories are included.
+
+The command first checks every selected repository, including untracked files.
+If any selected repository is dirty or cannot be inspected, it performs no
+fetches or pulls. Missing remote branches are ignored. When multiple remotes
+have incoming changes, it chooses the tip containing all other incoming tips;
+equal tips use the lexicographically first remote name, while divergent tips
+reject that repository. Pulls run serially as `git pull <remote> <branch>` and
+respect the user's existing Git pull configuration.
+
 ## Development
 
 ### Architecture Decisions

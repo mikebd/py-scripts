@@ -25,6 +25,7 @@ classifiers = [
 ai-agent-launcher = "ai_agent_launcher.cli:main"
 brew-diff = "brew.diff:diff"
 brew-update = "brew.update:update"
+pull-trunk-branches = "repo.pull_trunk_branches:main"
 
 [dependency-groups]
 dev = [
