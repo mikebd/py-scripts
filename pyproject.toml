@@ -46,6 +46,8 @@ omit = ["*/__init__.py"]
 # Pyright Configuration: https://microsoft.github.io/pyright/#/configuration
 [tool.pyright]
 pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
 typeCheckingMode = "strict"
 
 reportDeprecated = true
