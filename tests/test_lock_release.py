@@ -41,6 +41,10 @@ version = "0.1.2"
 [[package]]
 name = "example-project"
 version = "0.1.2"
+
+[[package]]
+name = "pinned-dependency"
+version = "9.9.9"
 """,
         encoding="utf-8",
     )
@@ -89,17 +93,25 @@ def _fake_uv(tmp_path: Path) -> Path:
     script = tmp_path / "uv"
     script.write_text(
         f"""#!{sys.executable}
+import os
 from pathlib import Path
 import re
 import sys
 
-if sys.argv[1:] != ["lock", "--offline"]:
+if sys.argv[1:] != ["lock", "--check", "--offline"]:
     raise SystemExit(2)
 root = Path.cwd()
-version = re.search(r'version = "([^"]+)"', (root / "pyproject.toml").read_text()).group(1)
-(root / "uv.lock").write_text(
-    'version = 1\\n\\n[[package]]\\nname = "example-project"\\nversion = "' + version + '"\\n'
-)
+project_version = re.search(
+    r'version = "([^"]+)"', (root / "pyproject.toml").read_text()
+).group(1)
+lock_version = re.search(
+    r'(?ms)^\\[\\[package\\]\\]\\nname = "example-project"\\nversion = "([^"]+)"',
+    (root / "uv.lock").read_text(),
+).group(1)
+if project_version != lock_version:
+    raise SystemExit(3)
+if os.environ.get("LOCK_RELEASE_FAIL_UPDATED_CHECK") == "1" and project_version == "0.1.3":
+    raise SystemExit(4)
 """,
         encoding="utf-8",
     )
@@ -119,6 +131,8 @@ import sys
 
 if sys.argv[1:] != ["release-check"]:
     raise SystemExit(2)
+if os.environ.get("LOCK_RELEASE_FAIL") == "1":
+    raise SystemExit(3)
 if os.environ.get("LOCK_RELEASE_MUTATE") == "1":
     (Path.cwd() / "unexpected.txt").write_text("changed\\n")
 """,
@@ -182,6 +196,7 @@ def test_lock_release_finalizes_and_pushes_the_one_commit_ahead_branch(
     assert "v0.1.3" in (root / "docs" / "ai-agent-launcher" / "README.md").read_text(
         encoding="utf-8"
     )
+    assert 'version = "9.9.9"' in (root / "uv.lock").read_text(encoding="utf-8")
     assert _run(["git", "status", "--porcelain"], root) == ""
     assert _run(["git", "log", "-1", "--format=%s"], root) == "chore(release): lock v0.1.3\n"
     branch = _run(["git", "branch", "--show-current"], root).strip()
@@ -256,6 +271,62 @@ def test_lock_release_rejects_mismatched_documentation_before_writing(
     assert _run(["git", "status", "--porcelain"], root) == ""
 
 
+def test_lock_release_rejects_an_ambiguous_locked_project_before_writing(tmp_path: Path) -> None:
+    release_lock = _release_lock_module()
+    root = _source_repository(tmp_path)
+    lock = root / "uv.lock"
+    lock.write_text(
+        lock.read_text(encoding="utf-8")
+        + """
+[[package]]
+name = "example-project"
+version = "0.1.2"
+""",
+        encoding="utf-8",
+    )
+    _run(["git", "add", "uv.lock"], root)
+    _run(["git", "commit", "-qm", "ambiguous project lock"], root)
+
+    with pytest.raises(release_lock.ReleaseLockError, match="exactly one package entry"):
+        release_lock.lock_release(root, "0.1.3", date(2026, 8, 27), _fake_uv(tmp_path))
+
+    assert 'version = "0.1.2"' in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "## [v0.1.3] - Draft" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert _run(["git", "status", "--porcelain"], root) == ""
+
+
+def test_lock_release_restores_owned_files_when_the_updated_lock_check_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release_lock = _release_lock_module()
+    root = _source_repository(tmp_path)
+    originals = {path: path.read_bytes() for path in release_lock._release_files(root)}
+    monkeypatch.setenv("LOCK_RELEASE_FAIL_UPDATED_CHECK", "1")
+
+    with pytest.raises(release_lock.ReleaseLockError, match="lock --check --offline"):
+        release_lock.lock_release(root, "0.1.3", date(2026, 8, 27), _fake_uv(tmp_path))
+
+    assert {path: path.read_bytes() for path in release_lock._release_files(root)} == originals
+    assert _run(["git", "status", "--porcelain"], root) == ""
+
+
+def test_lock_release_restores_owned_files_when_release_check_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release_lock = _release_lock_module()
+    root = _source_repository(tmp_path)
+    make_directory = _fake_make(tmp_path)
+    monkeypatch.setenv("PATH", f"{make_directory}:{os.environ['PATH']}")
+    monkeypatch.setenv("LOCK_RELEASE_FAIL", "1")
+    originals = {path: path.read_bytes() for path in release_lock._release_files(root)}
+
+    with pytest.raises(release_lock.ReleaseLockError, match="make release-check"):
+        release_lock.lock_release(root, "0.1.3", date(2026, 8, 27), _fake_uv(tmp_path))
+
+    assert {path: path.read_bytes() for path in release_lock._release_files(root)} == originals
+    assert _run(["git", "status", "--porcelain"], root) == ""
+
+
 def test_lock_release_rejects_release_check_changes_outside_the_bounded_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -267,6 +338,33 @@ def test_lock_release_rejects_release_check_changes_outside_the_bounded_set(
 
     with pytest.raises(release_lock.ReleaseLockError, match="unexpected file set: unexpected.txt"):
         release_lock.lock_release(root, "0.1.3", date(2026, 8, 27), _fake_uv(tmp_path))
+
+    assert 'version = "0.1.2"' in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "## [v0.1.3] - Draft" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert (root / "unexpected.txt").read_text(encoding="utf-8") == "changed\n"
+    assert _run(["git", "status", "--porcelain"], root) == " M unexpected.txt\n"
+
+
+def test_lock_release_restores_owned_files_and_index_when_commit_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release_lock = _release_lock_module()
+    root = _source_repository(tmp_path)
+    make_directory = _fake_make(tmp_path)
+    monkeypatch.setenv("PATH", f"{make_directory}:{os.environ['PATH']}")
+    hook_directory = tmp_path / "hooks"
+    hook_directory.mkdir()
+    hook = hook_directory / "pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    _run(["git", "config", "core.hooksPath", str(hook_directory)], root)
+    originals = {path: path.read_bytes() for path in release_lock._release_files(root)}
+
+    with pytest.raises(release_lock.ReleaseLockError, match="git commit"):
+        release_lock.lock_release(root, "0.1.3", date(2026, 8, 27), _fake_uv(tmp_path))
+
+    assert {path: path.read_bytes() for path in release_lock._release_files(root)} == originals
+    assert _run(["git", "status", "--porcelain"], root) == ""
 
 
 def test_lock_release_does_not_push_when_the_remote_is_not_exactly_one_commit_behind(

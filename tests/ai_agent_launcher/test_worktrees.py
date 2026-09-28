@@ -12,7 +12,7 @@ from ai_agent_launcher.cli import main
 
 
 @pytest.fixture(autouse=True)
-def _clear_git_index_file(  # pyright: ignore[reportUnusedFunction]
+def _clear_git_index_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Keep nested test repositories independent of a caller's Git index."""

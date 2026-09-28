@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mikebd-py-scripts"
-version = "0.1.4"
+version = "0.1.5"
 description = "A collection of Python scripts"
 authors = [
     { name = "Michael Ben-David" },
@@ -25,6 +25,7 @@ classifiers = [
 ai-agent-launcher = "ai_agent_launcher.cli:main"
 brew-diff = "brew.diff:diff"
 brew-update = "brew.update:update"
+pull-trunk-branches = "repo.pull_trunk_branches:main"
 
 [dependency-groups]
 dev = [
@@ -45,6 +46,8 @@ omit = ["*/__init__.py"]
 # Pyright Configuration: https://microsoft.github.io/pyright/#/configuration
 [tool.pyright]
 pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
 typeCheckingMode = "strict"
 
 reportDeprecated = true
