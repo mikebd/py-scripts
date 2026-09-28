@@ -15,6 +15,7 @@ repository applies its own scoped release-note policy.
 
 ### Scope
 
+- repository release workflow
 - `pull-trunk-branches`
 
 ### Added
@@ -24,6 +25,12 @@ repository applies its own scoped release-note policy.
   incoming common trunk branches serially.
 - `pull-trunk-branches --dry-run` previews live remote updates without
   changing selected repositories.
+
+### Fixed
+
+- `make release-lock` preserves the validated dependency lock during a
+  version-only release and restores its own release files when a pre-commit
+  check fails.
 
 ## [v0.1.4] - 2026-09-14
 

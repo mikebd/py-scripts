@@ -16,6 +16,7 @@ _VERSION_PATTERN = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 _MARKER_START = "<!-- release-lock: current-version-examples:start -->"
 _MARKER_END = "<!-- release-lock: current-version-examples:end -->"
 _MARKED_VERSION_PATTERN = re.compile(r"\bv(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\b")
+_LOCK_PACKAGE_PATTERN = re.compile(r"(?ms)^\[\[package\]\]\n.*?(?=^\[\[package\]\]|\Z)")
 
 
 class ReleaseLockError(RuntimeError):
@@ -101,6 +102,28 @@ def _replace_project_version(contents: str, current: str, target: str) -> str:
     return contents.replace(source, f'version = "{target}"')
 
 
+def _replace_locked_project_version(contents: str, name: str, current: str, target: str) -> str:
+    package_name_pattern = re.compile(rf'(?m)^name = "{re.escape(name)}"$')
+    packages = [
+        package
+        for package in _LOCK_PACKAGE_PATTERN.finditer(contents)
+        if package_name_pattern.search(package.group()) is not None
+    ]
+    if len(packages) != 1:
+        raise ReleaseLockError(f"uv.lock must contain exactly one package entry for {name}")
+
+    package = packages[0]
+    version_pattern = re.compile(rf'(?m)^version = "{re.escape(current)}"$')
+    updated_package, replacements = version_pattern.subn(
+        f'version = "{target}"', package.group()
+    )
+    if replacements != 1:
+        raise ReleaseLockError(
+            f"uv.lock package entry for {name} must contain exactly one version {current}"
+        )
+    return contents[: package.start()] + updated_package + contents[package.end() :]
+
+
 def _finalize_changelog(contents: str, target: str, release_date: date) -> str:
     source = f"## [v{target}] - Draft"
     if contents.count(source) != 1:
@@ -139,6 +162,17 @@ def _write(path: Path, contents: str) -> None:
         path.write_text(contents, encoding="utf-8")
     except OSError as error:
         raise ReleaseLockError(f"unable to write {path}") from error
+
+
+def _write_bytes(path: Path, contents: bytes) -> None:
+    try:
+        path.write_bytes(contents)
+    except OSError as error:
+        raise ReleaseLockError(f"unable to restore {path}") from error
+
+
+def _check_lock(root: Path, uv: Path) -> None:
+    _run([str(uv), "lock", "--check", "--offline"], cwd=root)
 
 
 def _verify_locked_version(root: Path, name: str, target: str) -> None:
@@ -189,6 +223,25 @@ def _verify_controlled_changes(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(expected))
 
 
+def _restore_release_files(root: Path, originals: dict[Path, bytes]) -> None:
+    release_files = _release_files(root)
+    try:
+        for path in release_files:
+            _write_bytes(path, originals[path])
+    except KeyError as error:
+        raise ReleaseLockError(f"missing original release file: {error.args[0]}") from error
+    _run(
+        [
+            "git",
+            "restore",
+            "--staged",
+            "--",
+            *(str(path.relative_to(root)) for path in release_files),
+        ],
+        cwd=root,
+    )
+
+
 def _push_one_commit_ahead(root: Path, branch: str) -> None:
     reference = f"refs/heads/{branch}"
     for remote in _run(["git", "remote"], cwd=root).splitlines():
@@ -233,15 +286,20 @@ def lock_release(root: Path, target: str, release_date: date, uv: Path) -> None:
         raise ReleaseLockError(
             f"target version {target} must be newer than current version {current}"
         )
+    _check_lock(root, uv)
 
     pyproject = root / "pyproject.toml"
     changelog = root / "CHANGELOG.md"
     documentation = root / "docs" / "ai-agent-launcher" / "README.md"
+    lock = root / "uv.lock"
+    release_files = _release_files(root)
     try:
-        project_contents = pyproject.read_text(encoding="utf-8")
-        changelog_contents = changelog.read_text(encoding="utf-8")
-        documentation_contents = documentation.read_text(encoding="utf-8")
-    except OSError as error:
+        originals = {path: path.read_bytes() for path in release_files}
+        project_contents = originals[pyproject].decode("utf-8")
+        changelog_contents = originals[changelog].decode("utf-8")
+        documentation_contents = originals[documentation].decode("utf-8")
+        lock_contents = originals[lock].decode("utf-8")
+    except (OSError, UnicodeDecodeError) as error:
         raise ReleaseLockError("unable to read release-lock source files") from error
 
     updated_project = _replace_project_version(project_contents, current, target)
@@ -249,15 +307,33 @@ def lock_release(root: Path, target: str, release_date: date, uv: Path) -> None:
     updated_documentation = _replace_marked_documentation_version(
         documentation_contents, current, target
     )
-    _write(pyproject, updated_project)
-    _write(changelog, updated_changelog)
-    _write(documentation, updated_documentation)
-    _run([str(uv), "lock", "--offline"], cwd=root)
-    _verify_locked_version(root, name, target)
-    _run(["make", "release-check"], cwd=root)
-    release_files = _verify_controlled_changes(root)
-    _run(["git", "add", "--", *(str(path.relative_to(root)) for path in release_files)], cwd=root)
-    _run(["git", "commit", "-m", f"chore(release): lock v{target}"], cwd=root)
+    updated_lock = _replace_locked_project_version(lock_contents, name, current, target)
+
+    committed = False
+    try:
+        _write(pyproject, updated_project)
+        _write(changelog, updated_changelog)
+        _write(documentation, updated_documentation)
+        _write(lock, updated_lock)
+        _check_lock(root, uv)
+        _verify_locked_version(root, name, target)
+        _run(["make", "release-check"], cwd=root)
+        release_files = _verify_controlled_changes(root)
+        _run(
+            ["git", "add", "--", *(str(path.relative_to(root)) for path in release_files)],
+            cwd=root,
+        )
+        _run(["git", "commit", "-m", f"chore(release): lock v{target}"], cwd=root)
+        committed = True
+    except BaseException as error:
+        if not committed:
+            try:
+                _restore_release_files(root, originals)
+            except ReleaseLockError as restore_error:
+                raise ReleaseLockError(
+                    f"{error}\nrelease lock could not restore its owned files: {restore_error}"
+                ) from error
+        raise
     _push_one_commit_ahead(root, branch)
 
 

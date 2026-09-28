@@ -405,10 +405,11 @@ For a new distribution release:
    ```
 
    The repository-local helper finalizes the Draft entry, updates the project
-   and locked distribution versions, updates marked version examples, runs
-   `make release-check`, creates the release-lock commit, and pushes only
-   remotes where that branch is exactly one commit behind. To select a release
-   date explicitly, run
+   and locked distribution versions without changing validated dependency
+   versions, updates marked version examples, runs `make release-check`,
+   creates the release-lock commit, and pushes only remotes where that branch
+   is exactly one commit behind. If a pre-commit check fails, it restores its
+   own release-file changes. To select a release date explicitly, run
    `uv run python scripts/dx/lock_release.py X.Y.Z --date YYYY-MM-DD`.
 3. Create and push an annotated matching Git tag, for example
    `git tag -a vX.Y.Z -m "mikebd-py-scripts vX.Y.Z"` followed by
