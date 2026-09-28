@@ -144,14 +144,14 @@ def _inspect(repository: Path, branch: str) -> _PullPlan | str | None:
     return _PullPlan(repository, branch, selected, old_head)
 
 
-def _report_success(plan: _PullPlan, new_head: str) -> str:
+def _report_success(plan: _PullPlan, new_head: str, incoming: int) -> str:
     previous = _git(plan.repository, ["rev-parse", "HEAD@{1}"])
     if previous.returncode == 0 and previous.stdout.strip() == plan.old_head:
         change_range = "HEAD@{1}..HEAD"
     else:
         change_range = f"{plan.old_head}..{new_head}"
     return (
-        f"{plan.repository}: {plan.tip.remote}/{plan.branch} updated {plan.tip.incoming} commits\n"
+        f"{plan.repository}: {plan.tip.remote}/{plan.branch} updated {incoming} commits\n"
         f"  {plan.old_head[:7]} -> {new_head[:7]}\n"
         f"  changes: {change_range}"
     )
@@ -163,6 +163,9 @@ def _process(repository: Path, branch: str) -> tuple[str | None, str | None]:
         return None, plan
     if plan is None:
         return None, None
+    current_branch = _branch(repository)
+    if current_branch != plan.branch:
+        return None, "branch changed during inspection; refusing to pull"
     current_head = _head(repository)
     if current_head != plan.old_head:
         return None, "HEAD changed during inspection; refusing to pull"
@@ -175,7 +178,14 @@ def _process(repository: Path, branch: str) -> tuple[str | None, str | None]:
         return None, "unable to inspect HEAD after pull"
     if new_head == plan.old_head:
         return None, "pull completed without changing HEAD"
-    return _report_success(plan, new_head), None
+    count_result = _git(repository, ["rev-list", "--count", f"{plan.old_head}..FETCH_HEAD"])
+    if count_result.returncode != 0:
+        return None, "unable to count incoming commits after pull"
+    try:
+        incoming = int(count_result.stdout.strip())
+    except ValueError:
+        return None, "invalid incoming commit count after pull"
+    return _report_success(plan, new_head, incoming), None
 
 
 def _build_parser() -> argparse.ArgumentParser:

@@ -130,6 +130,10 @@ equal tips use the lexicographically first remote name, while divergent tips
 reject that repository. Pulls run serially as `git pull <remote> <branch>` and
 respect the user's existing Git pull configuration.
 
+A fetch or post-fetch inspection failure prevents a pull for its repository,
+but earlier successful fetches may leave normal fetch state, including
+`FETCH_HEAD` or remote-tracking refs.
+
 ## Development
 
 ### Architecture Decisions

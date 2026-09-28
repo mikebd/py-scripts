@@ -41,17 +41,38 @@ def test_discover_repositories_includes_nested_clone_and_worktree(tmp_path: Path
     assert command.discover_repositories([tmp_path]) == expected
 
 
-def test_select_tip_prefers_containing_tip_and_lexical_equal_tie(
-    mocker: MockerFixture,
-) -> None:
+def test_select_tip_prefers_containing_tip(mocker: MockerFixture) -> None:
+    tips = (
+        command._RemoteTip("origin", "ancestor", 1),
+        command._RemoteTip("backup", "descendant", 2),
+    )
+
+    def contains_side_effect(_repository: Path, ancestor: str, descendant: str) -> bool:
+        return (ancestor, descendant) in {
+            ("ancestor", "ancestor"),
+            ("ancestor", "descendant"),
+            ("descendant", "descendant"),
+        }
+
+    contains = mocker.patch.object(
+        command,
+        "_contains",
+        side_effect=contains_side_effect,
+    )
+
+    assert command._select_tip(Path("repo"), tips) == tips[1]
+    contains.assert_any_call(Path("repo"), "ancestor", "descendant")
+
+
+def test_select_tip_prefers_lexical_remote_for_equal_tips(mocker: MockerFixture) -> None:
     tips = (
         command._RemoteTip("zulu", "tip", 2),
         command._RemoteTip("alpha", "tip", 2),
-        command._RemoteTip("middle", "descendant", 1),
     )
-    contains = mocker.patch.object(command, "_contains", return_value=True)
+
+    mocker.patch.object(command, "_contains", return_value=True)
+
     assert command._select_tip(Path("repo"), tips) == tips[1]
-    contains.assert_called()
 
 
 def test_select_tip_rejects_divergence(mocker: MockerFixture) -> None:
@@ -105,11 +126,13 @@ def test_process_uses_exact_pull_and_reports_reflog_range(mocker: MockerFixture)
     new = "fedcba0987654321"
     plan = command._PullPlan(repository, "main", command._RemoteTip("origin", "tip", 3), old)
     mocker.patch.object(command, "_inspect", return_value=plan)
+    mocker.patch.object(command, "_branch", return_value="main")
     heads = iter((old, new))
     mocker.patch.object(command, "_head", side_effect=heads)
     fake_git = mocker.patch.object(command, "_git")
     fake_git.side_effect = [
         subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], 0, "4\n", ""),
         subprocess.CompletedProcess([], 0, old, ""),
     ]
 
@@ -117,9 +140,13 @@ def test_process_uses_exact_pull_and_reports_reflog_range(mocker: MockerFixture)
 
     assert problem is None
     assert report is not None
-    assert "origin/main updated 3 commits" in report
+    assert "origin/main updated 4 commits" in report
     assert "changes: HEAD@{1}..HEAD" in report
     assert fake_git.call_args_list[0].args == (repository, ["pull", "origin", "main"])
+    assert fake_git.call_args_list[1].args == (
+        repository,
+        ["rev-list", "--count", f"{old}..FETCH_HEAD"],
+    )
 
 
 def test_process_reports_full_sha_range_when_reflog_does_not_match(mocker: MockerFixture) -> None:
@@ -128,12 +155,14 @@ def test_process_reports_full_sha_range_when_reflog_does_not_match(mocker: Mocke
     new = "fedcba0987654321"
     plan = command._PullPlan(repository, "main", command._RemoteTip("origin", "tip", 1), old)
     mocker.patch.object(command, "_inspect", return_value=plan)
+    mocker.patch.object(command, "_branch", return_value="main")
     mocker.patch.object(command, "_head", side_effect=(old, new))
     mocker.patch.object(
         command,
         "_git",
         side_effect=(
             subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], 0, "1\n", ""),
             subprocess.CompletedProcess([], 0, "different", ""),
         ),
     )
@@ -143,6 +172,50 @@ def test_process_reports_full_sha_range_when_reflog_does_not_match(mocker: Mocke
     assert problem is None
     assert report is not None
     assert f"changes: {old}..{new}" in report
+
+
+def test_process_rejects_branch_change_before_pull(mocker: MockerFixture) -> None:
+    repository = Path("repo")
+    plan = command._PullPlan(
+        repository,
+        "main",
+        command._RemoteTip("origin", "tip", 1),
+        "1234567890abcdef",
+    )
+    mocker.patch.object(command, "_inspect", return_value=plan)
+    mocker.patch.object(command, "_branch", return_value="develop")
+    head = mocker.patch.object(command, "_head")
+    git = mocker.patch.object(command, "_git")
+
+    report, problem = command._process(repository, "main")
+
+    assert report is None
+    assert problem == "branch changed during inspection; refusing to pull"
+    head.assert_not_called()
+    git.assert_not_called()
+
+
+def test_process_reports_count_failure_after_pull(mocker: MockerFixture) -> None:
+    repository = Path("repo")
+    old = "1234567890abcdef"
+    new = "fedcba0987654321"
+    plan = command._PullPlan(repository, "main", command._RemoteTip("origin", "tip", 1), old)
+    mocker.patch.object(command, "_inspect", return_value=plan)
+    mocker.patch.object(command, "_branch", return_value="main")
+    mocker.patch.object(command, "_head", side_effect=(old, new))
+    mocker.patch.object(
+        command,
+        "_git",
+        side_effect=(
+            subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], 1, "", "count failed"),
+        ),
+    )
+
+    report, problem = command._process(repository, "main")
+
+    assert report is None
+    assert problem == "unable to count incoming commits after pull"
 
 
 def test_main_dirty_repository_gates_all_processing(
