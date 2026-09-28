@@ -5,6 +5,6 @@ repos:
         name: Run make all
         # Tests create disposable Git repositories and launcher environments.
         # Do not leak hook metadata or agent-runtime overrides into them.
-        entry: env -u CODEX_HOME -u USE_RTK -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE make all
+        entry: env -u CODEX_HOME -u USE_RTK -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_DIR -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_WORK_TREE make all
         language: system
         pass_filenames: false

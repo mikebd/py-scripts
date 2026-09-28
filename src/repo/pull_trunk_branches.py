@@ -11,6 +11,15 @@ from pathlib import Path
 
 TRUNK_BRANCHES = ("dev", "develop", "development", "main", "master")
 
+_GIT_CONTEXT_ENVIRONMENT = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_WORK_TREE",
+)
+
 
 @dataclass(frozen=True)
 class _RemoteTip:
@@ -28,8 +37,16 @@ class _PullPlan:
 
 
 def _git(repository: Path, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+    environment = {
+        name: value for name, value in os.environ.items() if name not in _GIT_CONTEXT_ENVIRONMENT
+    }
     return subprocess.run(
-        ["git", *arguments], cwd=repository, capture_output=True, text=True, check=False
+        ["git", *arguments],
+        cwd=repository,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
     )
 
 
@@ -169,7 +186,7 @@ def _process(repository: Path, branch: str) -> tuple[str | None, str | None]:
     current_head = _head(repository)
     if current_head != plan.old_head:
         return None, "HEAD changed during inspection; refusing to pull"
-    pulled = _git(repository, ["pull", plan.tip.remote, plan.branch])
+    pulled = _git(repository, ["pull", plan.tip.remote, plan.tip.tip])
     if pulled.returncode != 0:
         details = pulled.stderr.strip() or pulled.stdout.strip() or "git pull failed"
         return None, details

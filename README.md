@@ -127,8 +127,9 @@ If any selected repository is dirty or cannot be inspected, it performs no
 fetches or pulls. Missing remote branches are ignored. When multiple remotes
 have incoming changes, it chooses the tip containing all other incoming tips;
 equal tips use the lexicographically first remote name, while divergent tips
-reject that repository. Pulls run serially as `git pull <remote> <branch>` and
-respect the user's existing Git pull configuration.
+reject that repository. Pulls run serially as `git pull <remote> <inspected-tip>`
+to integrate exactly the commit inspected during remote selection, while
+respecting the user's existing Git pull configuration.
 
 A fetch or post-fetch inspection failure prevents a pull for its repository,
 but earlier successful fetches may leave normal fetch state, including

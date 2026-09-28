@@ -26,6 +26,25 @@ def _commit(path: Path, name: str = "file") -> None:
     )
 
 
+def test_git_clears_inherited_git_context(
+    mocker: MockerFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in command._GIT_CONTEXT_ENVIRONMENT:
+        monkeypatch.setenv(name, "inherited")
+    monkeypatch.setenv("UNRELATED_VARIABLE", "preserved")
+    run = mocker.patch.object(
+        command.subprocess,
+        "run",
+        return_value=subprocess.CompletedProcess([], 0, "", ""),
+    )
+
+    command._git(Path("repo"), ["status"])
+
+    environment = run.call_args.kwargs["env"]
+    assert "UNRELATED_VARIABLE" in environment
+    assert all(name not in environment for name in command._GIT_CONTEXT_ENVIRONMENT)
+
+
 def test_discover_repositories_includes_nested_clone_and_worktree(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -120,7 +139,7 @@ def test_remote_tips_rejects_fetch_failure(mocker: MockerFixture) -> None:
     assert command._remote_tips(Path("repo"), "main") == "unable to fetch origin/main"
 
 
-def test_process_uses_exact_pull_and_reports_reflog_range(mocker: MockerFixture) -> None:
+def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixture) -> None:
     repository = Path("repo")
     old = "1234567890abcdef"
     new = "fedcba0987654321"
@@ -142,7 +161,7 @@ def test_process_uses_exact_pull_and_reports_reflog_range(mocker: MockerFixture)
     assert report is not None
     assert "origin/main updated 4 commits" in report
     assert "changes: HEAD@{1}..HEAD" in report
-    assert fake_git.call_args_list[0].args == (repository, ["pull", "origin", "main"])
+    assert fake_git.call_args_list[0].args == (repository, ["pull", "origin", "tip"])
     assert fake_git.call_args_list[1].args == (
         repository,
         ["rev-list", "--count", f"{old}..FETCH_HEAD"],
