@@ -127,9 +127,9 @@ If any selected repository is dirty or cannot be inspected, it performs no
 fetches or pulls. Missing remote branches are ignored. When multiple remotes
 have incoming changes, it chooses the tip containing all other incoming tips;
 equal tips use the lexicographically first remote name, while divergent tips
-reject that repository. Pulls run serially as `git pull <remote> <inspected-tip>`
-to integrate exactly the commit inspected during remote selection, while
-respecting the user's existing Git pull configuration.
+reject that repository. Pulls run serially as `git pull . <inspected-tip>` to
+integrate the already-fetched inspected commit without requesting it from the
+remote again, while respecting the user's existing Git pull configuration.
 
 `--dry-run` contacts live remotes and applies the same selection rules in an
 isolated temporary Git repository. It reports `would update` results with an

@@ -133,7 +133,6 @@ def _remote_tips(
             remote_url = _git(repository, ["remote", "get-url", remote])
             if remote_url.returncode != 0:
                 return f"unable to inspect {remote}/{branch}"
-            tip = fields[0]
             fetched = _git(
                 inspection_repository,
                 [
@@ -141,7 +140,7 @@ def _remote_tips(
                     "--quiet",
                     "--no-write-fetch-head",
                     remote_url.stdout.strip(),
-                    f"{tip}:{scratch_ref}",
+                    f"refs/heads/{branch}:{scratch_ref}",
                 ],
             )
         if fetched.returncode != 0:
@@ -272,7 +271,7 @@ def _process(repository: Path, branch: str) -> tuple[str | None, str | None]:
     current_head = _head(repository)
     if current_head != plan.old_head:
         return None, "HEAD changed during inspection; refusing to pull"
-    pulled = _git(repository, ["pull", plan.tip.remote, plan.tip.tip])
+    pulled = _git(repository, ["pull", ".", plan.tip.tip])
     if pulled.returncode != 0:
         details = pulled.stderr.strip() or pulled.stdout.strip() or "git pull failed"
         return None, details

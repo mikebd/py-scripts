@@ -223,7 +223,7 @@ def test_remote_tips_rejects_fetch_failure(mocker: MockerFixture) -> None:
     assert command._remote_tips(Path("repo"), "main") == "unable to fetch origin/main"
 
 
-def test_remote_tips_fetches_inspected_sha_into_scratch(mocker: MockerFixture) -> None:
+def test_remote_tips_fetches_live_branch_into_scratch(mocker: MockerFixture) -> None:
     repository = Path("repo")
     scratch = Path("scratch")
 
@@ -234,7 +234,13 @@ def test_remote_tips_fetches_inspected_sha_into_scratch(mocker: MockerFixture) -
             return subprocess.CompletedProcess([], 0, "inspected refs/heads/main\n", "")
         if path == repository and arguments == ["remote", "get-url", "origin"]:
             return subprocess.CompletedProcess([], 0, "remote-url\n", "")
-        if path == scratch and arguments[:3] == ["fetch", "--quiet", "--no-write-fetch-head"]:
+        if path == scratch and arguments == [
+            "fetch",
+            "--quiet",
+            "--no-write-fetch-head",
+            "remote-url",
+            "refs/heads/main:refs/pull-trunk-branches/0",
+        ]:
             return subprocess.CompletedProcess([], 0, "", "")
         if path == scratch and arguments == ["rev-parse", "refs/pull-trunk-branches/0"]:
             return subprocess.CompletedProcess([], 0, "inspected\n", "")
@@ -286,7 +292,7 @@ def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixt
     assert report is not None
     assert "origin/main updated 4 commits" in report
     assert "changes: HEAD@{1}..HEAD" in report
-    assert fake_git.call_args_list[0].args == (repository, ["pull", "origin", "tip"])
+    assert fake_git.call_args_list[0].args == (repository, ["pull", ".", "tip"])
     assert fake_git.call_args_list[1].args == (
         repository,
         ["rev-list", "--count", f"{old}..FETCH_HEAD"],
