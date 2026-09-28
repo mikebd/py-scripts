@@ -29,13 +29,13 @@ requires `ai-agent-launcher` to be available on that process's `PATH`. Install
 the selected upstream distribution release with:
 
 ```bash
-uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.4"
+uv tool install "git+https://github.com/mikebd/py-scripts@v0.1.5"
 ```
 
 For a fork, replace the repository URL and keep the selected tag:
 
 ```bash
-uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.4"
+uv tool install "git+https://github.com/OWNER/py-scripts@v0.1.5"
 ```
 
 Ensure the UV tool binary directory is on `PATH`. You may run
