@@ -118,9 +118,9 @@ Backups of existing binaries are created before replacement, and each install is
 
 Recursively finds local Git clones and worktrees beneath the given roots (or
 the current directory when no roots are supplied), then refreshes checked-out
-`dev`, `develop`, `development`, `main`, and `master` branches. Git metadata
-directories and symlinked directories are not traversed, while nested
-repositories are included.
+`dev`, `develop`, `development`, `main`, `master`, and `release/next`
+branches. Git metadata directories and symlinked directories are not
+traversed, while nested repositories are included.
 
 The command first checks every selected repository, including untracked files.
 If any selected repository is dirty or cannot be inspected, it performs no

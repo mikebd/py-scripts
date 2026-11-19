@@ -453,3 +453,27 @@ def test_main_omits_changes_reminder_when_no_repository_advanced(
     assert command.main(["root"]) == 0
 
     assert capsys.readouterr().out == ""
+
+
+def test_main_pulls_release_next_branch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    branch = "release/next"
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "init", "--bare", str(remote))
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git(repository, "init", "-b", branch)
+    _commit(repository, "base")
+    _git(repository, "remote", "add", "origin", str(remote))
+    _git(repository, "push", "-u", "origin", branch)
+    updater = tmp_path / "updater"
+    _git(tmp_path, "clone", "--branch", branch, str(remote), str(updater))
+    _commit(updater, "incoming")
+    tip = _git_text(updater, "rev-parse", "HEAD")
+    _git(updater, "push", "origin", branch)
+
+    assert command.main([str(repository)]) == 0
+
+    assert _git_text(repository, "rev-parse", "HEAD") == tip
+    assert f"origin/{branch} updated 1 commits" in capsys.readouterr().out

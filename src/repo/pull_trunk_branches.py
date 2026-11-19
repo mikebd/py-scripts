@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
 
-TRUNK_BRANCHES = ("dev", "develop", "development", "main", "master")
+TRUNK_BRANCHES = ("dev", "develop", "development", "main", "master", "release/next")
 
 _GIT_CONTEXT_ENVIRONMENT = (
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
