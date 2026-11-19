@@ -106,8 +106,7 @@ def test_dry_run_reports_update_without_changing_repository(
 
     assert capsys.readouterr().out == (
         f"{repository}: origin/main would update 1 commits\n"
-        f"  {old_head[:7]} -> {tip[:7]}\n"
-        f"  changes: {old_head}..{tip}\n"
+        f"  {old_head[:7]}..{tip[:7]}\n"
     )
     assert _git_state(repository) == before
     assert list(temporary_root.iterdir()) == []
@@ -125,7 +124,7 @@ def test_dry_run_supports_linked_worktree(
 
     assert command.main(["--dry-run", str(worktree)]) == 0
 
-    assert f"  {old_head[:7]} -> {tip[:7]}" in capsys.readouterr().out
+    assert f"  {old_head[:7]}..{tip[:7]}" in capsys.readouterr().out
     assert _git_state(worktree) == before
 
 
@@ -270,7 +269,7 @@ def test_preview_reports_scratch_clone_failure(mocker: MockerFixture) -> None:
     assert problem == "unable to create isolated inspection repository"
 
 
-def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixture) -> None:
+def test_process_pulls_inspected_tip_and_reports_short_shas(mocker: MockerFixture) -> None:
     repository = Path("repo")
     old = "1234567890abcdef"
     new = "fedcba0987654321"
@@ -283,7 +282,6 @@ def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixt
     fake_git.side_effect = [
         subprocess.CompletedProcess([], 0, "", ""),
         subprocess.CompletedProcess([], 0, "4\n", ""),
-        subprocess.CompletedProcess([], 0, old, ""),
     ]
 
     report, problem = command._process(repository, "main")
@@ -291,37 +289,13 @@ def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixt
     assert problem is None
     assert report is not None
     assert "origin/main updated 4 commits" in report
-    assert "changes: HEAD@{1}..HEAD" in report
+    assert report.endswith(f"  {old[:7]}..{new[:7]}")
+    assert "changes:" not in report
     assert fake_git.call_args_list[0].args == (repository, ["pull", ".", "tip"])
     assert fake_git.call_args_list[1].args == (
         repository,
         ["rev-list", "--count", f"{old}..FETCH_HEAD"],
     )
-
-
-def test_process_reports_full_sha_range_when_reflog_does_not_match(mocker: MockerFixture) -> None:
-    repository = Path("repo")
-    old = "1234567890abcdef"
-    new = "fedcba0987654321"
-    plan = command._PullPlan(repository, "main", command._RemoteTip("origin", "tip", 1), old)
-    mocker.patch.object(command, "_inspect", return_value=plan)
-    mocker.patch.object(command, "_branch", return_value="main")
-    mocker.patch.object(command, "_head", side_effect=(old, new))
-    mocker.patch.object(
-        command,
-        "_git",
-        side_effect=(
-            subprocess.CompletedProcess([], 0, "", ""),
-            subprocess.CompletedProcess([], 0, "1\n", ""),
-            subprocess.CompletedProcess([], 0, "different", ""),
-        ),
-    )
-
-    report, problem = command._process(repository, "main")
-
-    assert problem is None
-    assert report is not None
-    assert f"changes: {old}..{new}" in report
 
 
 def test_process_rejects_branch_change_before_pull(mocker: MockerFixture) -> None:
@@ -446,3 +420,27 @@ def test_main_continues_after_repository_pull_failure(
     assert "first: pull failed" in captured.err
     assert "second updated" in captured.out
     assert process.call_count == 2
+
+
+def test_main_pulls_release_next_branch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    branch = "release/next"
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "init", "--bare", str(remote))
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _git(repository, "init", "-b", branch)
+    _commit(repository, "base")
+    _git(repository, "remote", "add", "origin", str(remote))
+    _git(repository, "push", "-u", "origin", branch)
+    updater = tmp_path / "updater"
+    _git(tmp_path, "clone", "--branch", branch, str(remote), str(updater))
+    _commit(updater, "incoming")
+    tip = _git_text(updater, "rev-parse", "HEAD")
+    _git(updater, "push", "origin", branch)
+
+    assert command.main([str(repository)]) == 0
+
+    assert _git_text(repository, "rev-parse", "HEAD") == tip
+    assert f"origin/{branch} updated 1 commits" in capsys.readouterr().out

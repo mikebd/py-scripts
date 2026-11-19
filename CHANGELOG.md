@@ -11,6 +11,19 @@ Its human-facing, reverse-chronological structure and change categories are
 informed by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 repository applies its own scoped release-note policy.
 
+## [v0.1.6] - 2026-11-19
+
+### Scope
+
+- `pull-trunk-branches`
+
+### Changed
+
+- `pull-trunk-branches` reports each updated repository's abbreviated
+  `old..new` SHA range, ready to paste into `git log`, and no longer prints a
+  separate `changes:` line. `--dry-run` output uses the same format.
+- `pull-trunk-branches` also refreshes a checked-out `release/next` branch.
+
 ## [v0.1.5] - 2026-09-28
 
 ### Scope

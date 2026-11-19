@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
 
-TRUNK_BRANCHES = ("dev", "develop", "development", "main", "master")
+TRUNK_BRANCHES = ("dev", "develop", "development", "main", "master", "release/next")
 
 _GIT_CONTEXT_ENVIRONMENT = (
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -203,15 +203,9 @@ def _inspect(
 
 
 def _report_success(plan: _PullPlan, new_head: str, incoming: int) -> str:
-    previous = _git(plan.repository, ["rev-parse", "HEAD@{1}"])
-    if previous.returncode == 0 and previous.stdout.strip() == plan.old_head:
-        change_range = "HEAD@{1}..HEAD"
-    else:
-        change_range = f"{plan.old_head}..{new_head}"
     return (
         f"{plan.repository}: {plan.tip.remote}/{plan.branch} updated {incoming} commits\n"
-        f"  {plan.old_head[:7]} -> {new_head[:7]}\n"
-        f"  changes: {change_range}"
+        f"  {plan.old_head[:7]}..{new_head[:7]}"
     )
 
 
@@ -219,8 +213,7 @@ def _report_preview(plan: _PullPlan) -> str:
     return (
         f"{plan.repository}: {plan.tip.remote}/{plan.branch} would update "
         f"{plan.tip.incoming} commits\n"
-        f"  {plan.old_head[:7]} -> {plan.tip.tip[:7]}\n"
-        f"  changes: {plan.old_head}..{plan.tip.tip}"
+        f"  {plan.old_head[:7]}..{plan.tip.tip[:7]}"
     )
 
 
