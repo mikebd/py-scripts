@@ -19,9 +19,9 @@ repository applies its own scoped release-note policy.
 
 ### Changed
 
-- `pull-trunk-branches` no longer prints a `changes:` range for every updated
-  repository; it prints one closing reminder on how to review changes, only
-  when at least one repository advanced. `--dry-run` output omits the range.
+- `pull-trunk-branches` reports each updated repository's abbreviated
+  `old..new` SHA range, ready to paste into `git log`, and no longer prints a
+  separate `changes:` line. `--dry-run` output uses the same format.
 - `pull-trunk-branches` also refreshes a checked-out `release/next` branch.
 
 ## [v0.1.5] - 2026-09-28

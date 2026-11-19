@@ -106,7 +106,7 @@ def test_dry_run_reports_update_without_changing_repository(
 
     assert capsys.readouterr().out == (
         f"{repository}: origin/main would update 1 commits\n"
-        f"  {old_head[:7]} -> {tip[:7]}\n"
+        f"  {old_head[:7]}..{tip[:7]}\n"
     )
     assert _git_state(repository) == before
     assert list(temporary_root.iterdir()) == []
@@ -124,7 +124,7 @@ def test_dry_run_supports_linked_worktree(
 
     assert command.main(["--dry-run", str(worktree)]) == 0
 
-    assert f"  {old_head[:7]} -> {tip[:7]}" in capsys.readouterr().out
+    assert f"  {old_head[:7]}..{tip[:7]}" in capsys.readouterr().out
     assert _git_state(worktree) == before
 
 
@@ -289,7 +289,7 @@ def test_process_pulls_inspected_tip_and_reports_short_shas(mocker: MockerFixtur
     assert problem is None
     assert report is not None
     assert "origin/main updated 4 commits" in report
-    assert report.endswith(f"  {old[:7]} -> {new[:7]}")
+    assert report.endswith(f"  {old[:7]}..{new[:7]}")
     assert "changes:" not in report
     assert fake_git.call_args_list[0].args == (repository, ["pull", ".", "tip"])
     assert fake_git.call_args_list[1].args == (
@@ -420,39 +420,6 @@ def test_main_continues_after_repository_pull_failure(
     assert "first: pull failed" in captured.err
     assert "second updated" in captured.out
     assert process.call_count == 2
-
-
-def test_main_prints_changes_reminder_once_when_any_repository_advanced(
-    mocker: MockerFixture, capsys: pytest.CaptureFixture[str]
-) -> None:
-    repositories = (Path("first"), Path("second"), Path("third"))
-    mocker.patch.object(command, "discover_repositories", return_value=repositories)
-    mocker.patch.object(command, "_branch", return_value="main")
-    mocker.patch.object(command, "_preflight", return_value=None)
-    mocker.patch.object(
-        command,
-        "_process",
-        side_effect=(("first updated", None), (None, None), ("third updated", None)),
-    )
-
-    assert command.main(["root"]) == 0
-
-    output = capsys.readouterr().out
-    assert output.count(command._CHANGES_REMINDER) == 1
-    assert output.endswith(command._CHANGES_REMINDER + "\n")
-
-
-def test_main_omits_changes_reminder_when_no_repository_advanced(
-    mocker: MockerFixture, capsys: pytest.CaptureFixture[str]
-) -> None:
-    mocker.patch.object(command, "discover_repositories", return_value=(Path("first"),))
-    mocker.patch.object(command, "_branch", return_value="main")
-    mocker.patch.object(command, "_preflight", return_value=None)
-    mocker.patch.object(command, "_process", return_value=(None, None))
-
-    assert command.main(["root"]) == 0
-
-    assert capsys.readouterr().out == ""
 
 
 def test_main_pulls_release_next_branch(

@@ -130,10 +130,12 @@ equal tips use the lexicographically first remote name, while divergent tips
 reject that repository. Pulls run serially as `git pull . <inspected-tip>` to
 integrate the already-fetched inspected commit without requesting it from the
 remote again, while respecting the user's existing Git pull configuration.
+Each updated repository is reported with an abbreviated `old..new` SHA range
+that can be pasted into `git log`.
 
 `--dry-run` contacts live remotes and applies the same selection rules in an
 isolated temporary Git repository. It reports `would update` results with an
-exact full-SHA range, but never changes a selected repository's worktree,
+abbreviated `old..new` SHA range, but never changes a selected repository's worktree,
 refs, reflog, `FETCH_HEAD`, or object store. The normal global dirty-worktree
 gate still applies. Temporary inspection state is cleaned up on normal and
 graceful termination; an uncatchable process stop or host failure can leave

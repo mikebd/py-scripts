@@ -205,7 +205,7 @@ def _inspect(
 def _report_success(plan: _PullPlan, new_head: str, incoming: int) -> str:
     return (
         f"{plan.repository}: {plan.tip.remote}/{plan.branch} updated {incoming} commits\n"
-        f"  {plan.old_head[:7]} -> {new_head[:7]}"
+        f"  {plan.old_head[:7]}..{new_head[:7]}"
     )
 
 
@@ -213,7 +213,7 @@ def _report_preview(plan: _PullPlan) -> str:
     return (
         f"{plan.repository}: {plan.tip.remote}/{plan.branch} would update "
         f"{plan.tip.incoming} commits\n"
-        f"  {plan.old_head[:7]} -> {plan.tip.tip[:7]}"
+        f"  {plan.old_head[:7]}..{plan.tip.tip[:7]}"
     )
 
 
@@ -299,20 +299,11 @@ def _graceful_termination() -> Generator[None]:
             signal.signal(termination_signal, previous_handler)
 
 
-_CHANGES_REMINDER = (
-    "To review a repository's changes, run `git log <old>..<new>` with the SHAs above\n"
-    "(or `git log HEAD@{1}..HEAD` immediately after the pull)."
-)
-
-
 def _run_selected(
     selected: list[tuple[Path, str]],
     processor: Callable[[Path, str], tuple[str | None, str | None]],
-    *,
-    closing_note: str | None = None,
 ) -> int:
     diagnostics = False
-    advanced = False
     for repository, branch in selected:
         report, problem = processor(repository, branch)
         if problem is not None:
@@ -320,9 +311,6 @@ def _run_selected(
             diagnostics = True
         elif report is not None:
             print(report)
-            advanced = True
-    if advanced and closing_note is not None:
-        print(closing_note)
     return 1 if diagnostics else 0
 
 
@@ -363,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.dry_run:
         with _graceful_termination():
             return _run_selected(selected, _preview)
-    return _run_selected(selected, _process, closing_note=_CHANGES_REMINDER)
+    return _run_selected(selected, _process)
 
 
 if __name__ == "__main__":
