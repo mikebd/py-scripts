@@ -107,7 +107,6 @@ def test_dry_run_reports_update_without_changing_repository(
     assert capsys.readouterr().out == (
         f"{repository}: origin/main would update 1 commits\n"
         f"  {old_head[:7]} -> {tip[:7]}\n"
-        f"  changes: {old_head}..{tip}\n"
     )
     assert _git_state(repository) == before
     assert list(temporary_root.iterdir()) == []
@@ -270,7 +269,7 @@ def test_preview_reports_scratch_clone_failure(mocker: MockerFixture) -> None:
     assert problem == "unable to create isolated inspection repository"
 
 
-def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixture) -> None:
+def test_process_pulls_inspected_tip_and_reports_short_shas(mocker: MockerFixture) -> None:
     repository = Path("repo")
     old = "1234567890abcdef"
     new = "fedcba0987654321"
@@ -283,7 +282,6 @@ def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixt
     fake_git.side_effect = [
         subprocess.CompletedProcess([], 0, "", ""),
         subprocess.CompletedProcess([], 0, "4\n", ""),
-        subprocess.CompletedProcess([], 0, old, ""),
     ]
 
     report, problem = command._process(repository, "main")
@@ -291,37 +289,13 @@ def test_process_pulls_inspected_tip_and_reports_reflog_range(mocker: MockerFixt
     assert problem is None
     assert report is not None
     assert "origin/main updated 4 commits" in report
-    assert "changes: HEAD@{1}..HEAD" in report
+    assert report.endswith(f"  {old[:7]} -> {new[:7]}")
+    assert "changes:" not in report
     assert fake_git.call_args_list[0].args == (repository, ["pull", ".", "tip"])
     assert fake_git.call_args_list[1].args == (
         repository,
         ["rev-list", "--count", f"{old}..FETCH_HEAD"],
     )
-
-
-def test_process_reports_full_sha_range_when_reflog_does_not_match(mocker: MockerFixture) -> None:
-    repository = Path("repo")
-    old = "1234567890abcdef"
-    new = "fedcba0987654321"
-    plan = command._PullPlan(repository, "main", command._RemoteTip("origin", "tip", 1), old)
-    mocker.patch.object(command, "_inspect", return_value=plan)
-    mocker.patch.object(command, "_branch", return_value="main")
-    mocker.patch.object(command, "_head", side_effect=(old, new))
-    mocker.patch.object(
-        command,
-        "_git",
-        side_effect=(
-            subprocess.CompletedProcess([], 0, "", ""),
-            subprocess.CompletedProcess([], 0, "1\n", ""),
-            subprocess.CompletedProcess([], 0, "different", ""),
-        ),
-    )
-
-    report, problem = command._process(repository, "main")
-
-    assert problem is None
-    assert report is not None
-    assert f"changes: {old}..{new}" in report
 
 
 def test_process_rejects_branch_change_before_pull(mocker: MockerFixture) -> None:
@@ -446,3 +420,36 @@ def test_main_continues_after_repository_pull_failure(
     assert "first: pull failed" in captured.err
     assert "second updated" in captured.out
     assert process.call_count == 2
+
+
+def test_main_prints_changes_reminder_once_when_any_repository_advanced(
+    mocker: MockerFixture, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repositories = (Path("first"), Path("second"), Path("third"))
+    mocker.patch.object(command, "discover_repositories", return_value=repositories)
+    mocker.patch.object(command, "_branch", return_value="main")
+    mocker.patch.object(command, "_preflight", return_value=None)
+    mocker.patch.object(
+        command,
+        "_process",
+        side_effect=(("first updated", None), (None, None), ("third updated", None)),
+    )
+
+    assert command.main(["root"]) == 0
+
+    output = capsys.readouterr().out
+    assert output.count(command._CHANGES_REMINDER) == 1
+    assert output.endswith(command._CHANGES_REMINDER + "\n")
+
+
+def test_main_omits_changes_reminder_when_no_repository_advanced(
+    mocker: MockerFixture, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mocker.patch.object(command, "discover_repositories", return_value=(Path("first"),))
+    mocker.patch.object(command, "_branch", return_value="main")
+    mocker.patch.object(command, "_preflight", return_value=None)
+    mocker.patch.object(command, "_process", return_value=(None, None))
+
+    assert command.main(["root"]) == 0
+
+    assert capsys.readouterr().out == ""
